@@ -9,6 +9,20 @@ final class AppModel {
     var status: TranscriptionStatus = .idle
     var selectedDevice: TranskunDevice = .cpu
     var isPianoSeparationEnabled = false
+    var outputDestinationMode: OutputDestinationMode = .sourceFolder {
+        didSet {
+            UserDefaults.standard.set(outputDestinationMode.rawValue, forKey: SettingsKeys.outputDestinationMode)
+        }
+    }
+    var customOutputFolderURL: URL? {
+        didSet {
+            if let path = customOutputFolderURL?.path {
+                UserDefaults.standard.set(path, forKey: SettingsKeys.customOutputFolderPath)
+            } else {
+                UserDefaults.standard.removeObject(forKey: SettingsKeys.customOutputFolderPath)
+            }
+        }
+    }
     var logLines: [String] = []
     var isImporterPresented = false
     var isDropTargeted = false
@@ -18,12 +32,51 @@ final class AppModel {
     private var transcriptionTask: Task<Void, Never>?
     private var startupAutomationHandled = false
 
+    init() {
+        let defaults = UserDefaults.standard
+
+        if let rawMode = defaults.string(forKey: SettingsKeys.outputDestinationMode),
+           let mode = OutputDestinationMode(rawValue: rawMode) {
+            outputDestinationMode = mode
+        }
+
+        if let path = defaults.string(forKey: SettingsKeys.customOutputFolderPath), !path.isEmpty {
+            customOutputFolderURL = URL(fileURLWithPath: path, isDirectory: true)
+        }
+    }
+
     var canCancel: Bool {
         status.isInProgress
     }
 
+    var customOutputFolderPath: String {
+        customOutputFolderURL?.path ?? "No folder selected"
+    }
+
     func presentImporter() {
         isImporterPresented = true
+    }
+
+    func chooseCustomOutputFolder() {
+        let panel = NSOpenPanel()
+        panel.canChooseFiles = false
+        panel.canChooseDirectories = true
+        panel.allowsMultipleSelection = false
+        panel.canCreateDirectories = true
+        panel.prompt = "Choose"
+        panel.message = "Choose where Piano transcribe should save MIDI files."
+
+        guard panel.runModal() == .OK, let url = panel.url else {
+            return
+        }
+
+        customOutputFolderURL = url
+        outputDestinationMode = .customFolder
+    }
+
+    func clearCustomOutputFolder() {
+        customOutputFolderURL = nil
+        outputDestinationMode = .sourceFolder
     }
 
     func transcribe(sourceURL: URL) {
@@ -66,6 +119,15 @@ final class AppModel {
         let revealInFinder = environment["PIANO_TRANSCRIBE_AUTORUN_REVEAL"] != "0"
         let quitWhenFinished = environment["PIANO_TRANSCRIBE_AUTORUN_QUIT"] == "1"
         isPianoSeparationEnabled = environment["PIANO_TRANSCRIBE_AUTORUN_PREPROCESSOR"] == "pc-separation"
+
+        if environment["PIANO_TRANSCRIBE_AUTORUN_OUTPUT_DESTINATION"] == "source-folder" {
+            outputDestinationMode = .sourceFolder
+        }
+
+        if let outputFolderPath = environment["PIANO_TRANSCRIBE_AUTORUN_OUTPUT_FOLDER"], !outputFolderPath.isEmpty {
+            customOutputFolderURL = URL(fileURLWithPath: outputFolderPath, isDirectory: true)
+            outputDestinationMode = .customFolder
+        }
 
         logLines.removeAll()
         status = .copyingInput
@@ -139,11 +201,11 @@ final class AppModel {
         automationResultURL: URL?,
         quitWhenFinished: Bool
     ) async {
-        var resolvedOutputURL: URL?
+        var attemptedOutputURL: URL?
 
         do {
-            let outputURL = try finalOutputURL ?? Self.defaultOutputURL(for: sourceURL)
-            resolvedOutputURL = outputURL
+            let outputURL = try resolvedOutputURL(for: sourceURL, override: finalOutputURL)
+            attemptedOutputURL = outputURL
             let result = try await transcriptionService.transcribe(
                 sourceURL: sourceURL,
                 finalOutputURL: outputURL,
@@ -178,7 +240,7 @@ final class AppModel {
             writeAutomationResult(
                 status: "cancelled",
                 sourceURL: sourceURL,
-                outputURL: resolvedOutputURL,
+                outputURL: attemptedOutputURL,
                 message: "Cancelled",
                 resultURL: automationResultURL
             )
@@ -189,7 +251,7 @@ final class AppModel {
             writeAutomationResult(
                 status: "failed",
                 sourceURL: sourceURL,
-                outputURL: resolvedOutputURL,
+                outputURL: attemptedOutputURL,
                 message: message,
                 resultURL: automationResultURL
             )
@@ -223,10 +285,34 @@ final class AppModel {
         return nil
     }
 
-    private static func defaultOutputURL(for inputURL: URL) throws -> URL {
+    private func resolvedOutputURL(for inputURL: URL, override: URL?) throws -> URL {
+        if let override {
+            return override
+        }
+
+        let fileName = Self.defaultOutputFileName(for: inputURL)
+
+        switch outputDestinationMode {
+        case .sourceFolder:
+            return inputURL.deletingLastPathComponent().appendingPathComponent(fileName)
+        case .customFolder:
+            guard let folder = customOutputFolderURL else {
+                throw OutputDestinationError.customFolderMissing
+            }
+
+            var isDirectory: ObjCBool = false
+            guard FileManager.default.fileExists(atPath: folder.path, isDirectory: &isDirectory),
+                  isDirectory.boolValue else {
+                throw OutputDestinationError.customFolderUnavailable(folder.path)
+            }
+
+            return folder.appendingPathComponent(fileName)
+        }
+    }
+
+    private static func defaultOutputFileName(for inputURL: URL) -> String {
         let base = inputURL.deletingPathExtension().lastPathComponent
-        let folder = inputURL.deletingLastPathComponent()
-        return folder.appendingPathComponent("\(base)-transkun.mid")
+        return "\(base)-transkun.mid"
     }
 
     private func userFacingMessage(for error: Error) -> String {
@@ -255,6 +341,11 @@ final class AppModel {
         }
 
         return error.localizedDescription
+    }
+
+    private enum SettingsKeys {
+        static let outputDestinationMode = "outputDestinationMode"
+        static let customOutputFolderPath = "customOutputFolderPath"
     }
 
     private var selectedPreprocessor: AudioPreprocessor {

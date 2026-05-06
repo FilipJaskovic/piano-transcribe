@@ -24,9 +24,14 @@ trap 'pkill -x "$APP_PROCESS" >/dev/null 2>&1 || true; rm -rf "$TMP_DIR"' EXIT
 INPUT_WAV="$TMP_DIR/silence.wav"
 OUTPUT_MID="$TMP_DIR/silence-transkun.mid"
 RESULT_JSON="$TMP_DIR/result-success.json"
+CUSTOM_OUTPUT_DIR="$TMP_DIR/custom-output"
+CUSTOM_OUTPUT_MID="$CUSTOM_OUTPUT_DIR/silence-transkun.mid"
+CUSTOM_RESULT_JSON="$TMP_DIR/result-custom-output.json"
 BAD_MIDI="$TMP_DIR/not-audio.mid"
 BAD_RESULT_JSON="$TMP_DIR/result-bad-input.json"
 SEPARATION_RESULT_JSON="$TMP_DIR/result-separation-missing.json"
+
+mkdir -p "$CUSTOM_OUTPUT_DIR"
 
 export INPUT_WAV BAD_MIDI
 ".venv/bin/python" - <<'PY'
@@ -54,9 +59,14 @@ launch_and_wait() {
   local output="$2"
   local result="$3"
   local preprocessor="${4:-}"
+  local output_folder="${5:-}"
+  local output_destination="source-folder"
 
   if [[ -n "$output" ]]; then
     rm -f "$output"
+  fi
+  if [[ -n "$output_folder" ]]; then
+    output_destination="custom-folder"
   fi
   rm -f "$result"
 
@@ -65,6 +75,7 @@ launch_and_wait() {
     --env "PIANO_TRANSCRIBE_ROOT=$ROOT_DIR"
     --env "PIANO_TRANSCRIBE_AUTORUN_INPUT=$input"
     --env "PIANO_TRANSCRIBE_AUTORUN_RESULT_FILE=$result"
+    --env "PIANO_TRANSCRIBE_AUTORUN_OUTPUT_DESTINATION=$output_destination"
     --env "PIANO_TRANSCRIBE_AUTORUN_REVEAL=0"
     --env "PIANO_TRANSCRIBE_AUTORUN_QUIT=1"
   )
@@ -75,6 +86,10 @@ launch_and_wait() {
 
   if [[ -n "$preprocessor" ]]; then
     open_args+=(--env "PIANO_TRANSCRIBE_AUTORUN_PREPROCESSOR=$preprocessor")
+  fi
+
+  if [[ -n "$output_folder" ]]; then
+    open_args+=(--env "PIANO_TRANSCRIBE_AUTORUN_OUTPUT_FOLDER=$output_folder")
   fi
 
   /usr/bin/open "${open_args[@]}"
@@ -101,6 +116,19 @@ assert result["outputExists"] is True, result
 assert result["output"] == "$OUTPUT_MID", result
 assert Path("$OUTPUT_MID").stat().st_size > 0, result
 print("App E2E audio -> MIDI OK:", "$OUTPUT_MID")
+PY
+
+launch_and_wait "$INPUT_WAV" "" "$CUSTOM_RESULT_JSON" "" "$CUSTOM_OUTPUT_DIR"
+".venv/bin/python" - <<PY
+import json
+from pathlib import Path
+
+result = json.loads(Path("$CUSTOM_RESULT_JSON").read_text())
+assert result["status"] == "completed", result
+assert result["outputExists"] is True, result
+assert result["output"] == "$CUSTOM_OUTPUT_MID", result
+assert Path("$CUSTOM_OUTPUT_MID").stat().st_size > 0, result
+print("App E2E custom output folder OK:", "$CUSTOM_OUTPUT_MID")
 PY
 
 launch_and_wait "$BAD_MIDI" "$TMP_DIR/not-audio-transkun.mid" "$BAD_RESULT_JSON"

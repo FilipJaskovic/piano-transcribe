@@ -6,13 +6,13 @@ This file is the persistent build plan for Piano transcribe, a native macOS wrap
 
 ## Progress Tracker
 
-Current status: Developer MVP is implemented and verified. Backend WAV/MP3 smoke tests pass on CPU, the SwiftUI app builds and launches, automated app E2E audio -> MIDI passes, `.mid` input rejection passes, and the private GitHub repository has a macOS 26 workflow for backend smoke testing, app E2E testing, Release building, DMG packaging, and artifact upload.
+Current status: Developer MVP is implemented and verified. Backend WAV/MP3 smoke tests pass on CPU, the SwiftUI app builds and launches, automated app E2E audio -> MIDI passes, `.mid` input rejection passes, configurable MIDI output destination passes, and the private GitHub repository has a macOS 26 workflow for backend smoke testing, app E2E testing, Release building, DMG packaging, and artifact upload.
 
 | Milestone | Status | Notes |
 | --- | --- | --- |
 | 1. Terminal proof of concept | Complete | Python 3.12 venv created. WAV and MP3 audio -> MIDI smoke tests pass on CPU. |
 | 2. SwiftUI shell | Complete | Main window, drop zone, file importer, device picker, status, logs, settings, and cancel command are implemented. |
-| 3. Swift-to-Python integration | Complete | `TranscriptionService` invokes Python with `Process`, captures stdout/stderr, copies `output.mid`, and `script/app_e2e.sh` verifies real app audio -> MIDI plus `.mid` rejection. |
+| 3. Swift-to-Python integration | Complete | `TranscriptionService` invokes Python with `Process`, captures stdout/stderr, copies `output.mid`, and `script/app_e2e.sh` verifies real app audio -> MIDI, same-folder output, custom-folder output, and `.mid` rejection. |
 | 4. Release backend packaging | Started | Added scripts and GitHub Actions workflow for Release build, backend staging, signing, DMG creation, artifact upload, and tag releases. Full standalone Python/ffmpeg bundling and license collection are still pending. |
 | 5. Signing and notarization | Started | Added signing, entitlement, readiness, and notarization scripts. Current Release app has hardened runtime and empty entitlements, but real notarization still needs Developer ID identity and Apple credentials. |
 | Future separation pre-step | Optional developer hook implemented | `AudioPreprocessor`, `NoOpPreprocessor`, and `PianoConcertoSeparationPreprocessor` are present. The app can call a separate pc-separation backend before Transkun when that environment and pretrained weights are installed. |
@@ -114,6 +114,10 @@ GitHub tracking:
   - Default app output remains `<input-name>-transkun.mid` next to the selected audio file.
   - `FileAccess.saveOutput` now performs the final copy through the file-access helper with security-scoped access attempts.
   - `script/app_e2e.sh` now verifies the default output path is beside the input file.
+- Added configurable MIDI output destination:
+  - Settings now lets the user choose between saving beside the source audio or saving to a custom folder.
+  - Custom folder selection uses a native macOS folder picker and persists the chosen path in user defaults for the non-sandboxed MVP.
+  - Autorun/E2E support now forces deterministic output destination modes and verifies custom-folder saving.
 
 ## 1. MVP Product Definition
 
