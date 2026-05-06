@@ -1,0 +1,53 @@
+name: Build and Release
+
+on:
+  push:
+    branches:
+      - main
+    tags:
+      - "v*"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build-macos:
+    name: macOS 26 build
+    runs-on: macos-26
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Show tool versions
+        run: |
+          xcodebuild -version
+          swift --version
+          python3.12 --version
+
+      - name: Build and smoke-test backend
+        run: ./Packaging/build_backend_dev.sh
+
+      - name: Build app and package developer DMG
+        run: ./Packaging/package_dmg.sh --dev-venv-ok --skip-notarize
+
+      - name: Upload DMG artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: piano-transcribe-dmg
+          path: dist/*.dmg
+
+      - name: Publish GitHub Release for tags
+        if: startsWith(github.ref, 'refs/tags/v')
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "${GITHUB_REF_NAME}" dist/*.dmg \
+            --title "Piano transcribe ${GITHUB_REF_NAME}" \
+            --notes "Developer DMG build from GitHub Actions. Final notarized distribution still requires standalone Python backend packaging and Developer ID signing."

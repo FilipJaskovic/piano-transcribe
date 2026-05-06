@@ -1,0 +1,28 @@
+# Keep Python at 3.12.x for compatibility.
+transkun==2.0.1
+
+# PyTorch stack. Pin exact versions after local macOS 26 smoke test.
+torch
+torchaudio
+
+# Transkun dependencies from repo/setup.py.
+ncls
+pretty_midi
+scipy
+mir_eval
+pydub
+
+# Developer fallback for compressed audio when system ffmpeg is absent or broken.
+# Release builds still need a vetted bundled ffmpeg/ffprobe with license notices.
+imageio-ffmpeg
+
+matplotlib
+tensorboard
+tqdm
+torch_optimizer
+sox
+soxr
+moduleconf
+
+# Useful for future compatibility if someone accidentally uses Python 3.13+.
+audioop-lts; python_version >= "3.13"

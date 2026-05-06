@@ -1,0 +1,14 @@
+.DS_Store
+.venv/
+build/
+DerivedData/
+dist/
+*.xcuserstate
+xcuserdata/
+*.mid
+*.mp3
+*.wav
+*.aif
+*.aiff
+*.m4a
+*.flac
