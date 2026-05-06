@@ -150,7 +150,25 @@ def save_audio(path: Path, audio, sample_rate: int):
     sf.write(str(path), np.ascontiguousarray(samples), sample_rate)
 
 
-def separate(input_path: Path, output_path: Path, repo: Path, model: str, device: str) -> int:
+def cfg_value(root, dotted_key: str, default):
+    value = root
+    for key in dotted_key.split("."):
+        value = getattr(value, key, None)
+        if value is None:
+            return default
+    return value
+
+
+def separate(
+    input_path: Path,
+    output_path: Path,
+    repo: Path,
+    model: str,
+    device: str,
+    split: bool,
+    overlap: float | None,
+    shifts: int | None,
+) -> int:
     failures = validate_repo(repo)
     if failures:
         return fail("; ".join(failures))
@@ -159,6 +177,7 @@ def separate(input_path: Path, output_path: Path, repo: Path, model: str, device
     os.chdir(repo)
 
     import torch
+    from model.demucs.apply import apply_model, apply_model_hpss
     from utils import init_separator
 
     original_torch_load = torch.load
@@ -175,15 +194,54 @@ def separate(input_path: Path, output_path: Path, repo: Path, model: str, device
 
     sample_rate = int(getattr(separator, "_sample_rate", 44100))
     channels = int(getattr(separator, "_num_channels", 2))
+    targets = list(getattr(separator, "_targets", ["piano", "orch"]))
+    model_cfg = getattr(separator, "_model_cfg", None)
+    model_split = bool(split if split is not None else cfg_value(model_cfg, "test.split", True))
+    model_overlap = float(overlap if overlap is not None else cfg_value(model_cfg, "test.overlap", 0.25))
+    model_shifts = int(shifts if shifts is not None else cfg_value(model_cfg, "test.shifts", 1))
 
     emit("reading_audio", input=str(input_path))
     audio, source_rate = load_audio(input_path)
     audio = normalize_audio(audio, source_rate, sample_rate, channels)
     audio = audio.to(device)
 
-    emit("separating")
+    duration = audio.shape[-1] / sample_rate
+    emit(
+        "separating",
+        split=model_split,
+        overlap=model_overlap,
+        shifts=model_shifts,
+        durationSeconds=round(duration, 2),
+    )
     with torch.no_grad():
-        estimates = separator.separate(audio.unsqueeze(0))
+        mix = audio.unsqueeze(0)
+        if hasattr(separator, "_model"):
+            if getattr(separator._model, "_hpss_output", False):
+                estimates_tensor = apply_model_hpss(
+                    separator._model,
+                    mix,
+                    split=model_split,
+                    overlap=model_overlap,
+                    shifts=model_shifts,
+                    num_workers=0,
+                    device=device,
+                )[0]
+            else:
+                estimates_tensor = apply_model(
+                    separator._model,
+                    mix,
+                    split=model_split,
+                    overlap=model_overlap,
+                    shifts=model_shifts,
+                    num_workers=0,
+                    device=device,
+                )
+            estimates = {
+                target: estimates_tensor[:, target_idx, ...].squeeze(0)
+                for target_idx, target in enumerate(targets)
+            }
+        else:
+            estimates = separator.separate(mix)
 
     if "piano" not in estimates:
         return fail("pc-separation did not return a piano estimate.")
@@ -207,6 +265,9 @@ def main() -> int:
     parser.add_argument("--repo", default=os.environ.get("PIANO_TRANSCRIBE_PC_SEPARATION_ROOT"))
     parser.add_argument("--model", default="HDMC", choices=["UMX06", "UMX20", "SPL", "DMC", "HDMC"])
     parser.add_argument("--device", default="cpu", choices=["cpu", "cuda"])
+    parser.add_argument("--no-split", action="store_true", help="Disable chunked model application.")
+    parser.add_argument("--overlap", type=float, default=None, help="Chunk overlap ratio for split separation.")
+    parser.add_argument("--shifts", type=int, default=None, help="Number of test-time shifts.")
     parser.add_argument("--doctor", action="store_true")
 
     args = parser.parse_args()
@@ -229,6 +290,9 @@ def main() -> int:
             repo=repo,
             model=args.model,
             device=args.device,
+            split=not args.no_split,
+            overlap=args.overlap,
+            shifts=args.shifts,
         )
     except Exception as exc:
         emit("error", message=str(exc))

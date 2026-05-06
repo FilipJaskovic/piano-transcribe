@@ -1,12 +1,12 @@
 # Piano transcribe Plan: macOS 26+ Audio-to-MIDI Wrapper
 
-Last updated: 2026-05-06
+Last updated: 2026-05-07
 
 This file is the persistent build plan for Piano transcribe, a native macOS wrapper around Transkun V2. Update the progress tracker as milestones are completed.
 
 ## Progress Tracker
 
-Current status: Developer MVP is implemented and verified. Backend WAV/MP3 smoke tests pass on CPU, the SwiftUI app builds and launches, automated app E2E audio -> MIDI passes, `.mid` input rejection passes, configurable MIDI output destination passes, bundled HDMC piano/orchestra separation passes locally, and the private GitHub repository has a macOS 26 workflow for backend smoke testing, app E2E testing, Release building, DMG packaging, release-app E2E, and artifact upload.
+Current status: Developer MVP is implemented and verified. Backend WAV/MP3 smoke tests pass on CPU, the SwiftUI app builds and launches, automated app E2E audio -> MIDI passes, `.mid` input rejection passes, configurable MIDI output destination passes, bundled HDMC piano/orchestra separation uses chunked inference and passes locally, and the private GitHub repository has a macOS 26 workflow for backend smoke testing, app E2E testing, Release building, DMG packaging, release-app E2E, and artifact upload.
 
 | Milestone | Status | Notes |
 | --- | --- | --- |
@@ -32,6 +32,18 @@ GitHub tracking:
 - https://github.com/FilipJaskovic/piano-transcribe/issues/4 - Configure Developer ID signing and notarization.
 
 ## Implementation Log
+
+### 2026-05-07
+
+- Fixed long-track HDMC separator failures where the subprocess could be killed with exit code 9 during full-track inference.
+- `Backend/pc_separator_runner.py` now invokes the upstream Demucs `apply_model(..., split=True)` path, honoring the model config's split, overlap, and shifts settings while forcing single-worker chunk execution to reduce memory pressure.
+- Separator progress JSON now reports split settings and input duration.
+- Swift wraps separator subprocess failures as piano/orchestra separation errors instead of presenting them as Transkun failures.
+- Verified:
+  - `python3 -m py_compile Backend/pc_separator_runner.py Backend/pc_separator_smoke_test.py`
+  - `Backend/pc_separator_smoke_test.py`
+  - 45-second synthetic WAV through HDMC split separation
+  - `PIANO_TRANSCRIBE_TEST_SEPARATOR=1 ./script/app_e2e.sh`
 
 ### 2026-05-06
 

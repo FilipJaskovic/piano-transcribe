@@ -60,19 +60,28 @@ struct PianoConcertoSeparationPreprocessor: AudioPreprocessor {
             environment["PATH"] = "\(ffmpegDir.path):\(existingPath)"
         }
 
-        _ = try await processRunner(
-            backend.pythonExecutableURL,
-            [
-                backend.runnerScriptURL.path,
-                "--input", inputURL.path,
-                "--output", outputURL.path,
-                "--repo", backend.repositoryURL.path,
-                "--model", "HDMC",
-                "--device", "cpu"
-            ],
-            environment,
-            logHandler
-        )
+        do {
+            _ = try await processRunner(
+                backend.pythonExecutableURL,
+                [
+                    backend.runnerScriptURL.path,
+                    "--input", inputURL.path,
+                    "--output", outputURL.path,
+                    "--repo", backend.repositoryURL.path,
+                    "--model", "HDMC",
+                    "--device", "cpu"
+                ],
+                environment,
+                logHandler
+            )
+        } catch let error as TranscriptionServiceError {
+            switch error {
+            case .processFailed(let exitCode, let output):
+                throw AudioPreprocessorError.processFailed(exitCode: exitCode, output: output)
+            case .outputMissing:
+                throw error
+            }
+        }
 
         guard FileManager.default.fileExists(atPath: outputURL.path) else {
             throw AudioPreprocessorError.outputMissing
@@ -83,10 +92,13 @@ struct PianoConcertoSeparationPreprocessor: AudioPreprocessor {
 }
 
 enum AudioPreprocessorError: LocalizedError {
+    case processFailed(exitCode: Int32, output: String)
     case outputMissing
 
     var errorDescription: String? {
         switch self {
+        case .processFailed(let exitCode, let output):
+            "Piano/orchestra separation failed with exit code \(exitCode).\n\(output)"
         case .outputMissing:
             "Piano/orchestra separation finished but did not create a piano stem."
         }

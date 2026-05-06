@@ -349,6 +349,15 @@ final class AppModel {
             }
         }
 
+        if let preprocessorError = error as? AudioPreprocessorError {
+            switch preprocessorError {
+            case .processFailed:
+                return "Piano/orchestra separation failed. Open Details for backend output."
+            case .outputMissing:
+                return preprocessorError.localizedDescription
+            }
+        }
+
         if let backendError = error as? PythonBackendError {
             switch backendError {
             case .backendNotFound:
