@@ -35,6 +35,16 @@ if [[ -d "$BACKEND_DIR" ]]; then
   else
     echo "Backend Python: missing"
   fi
+  if [[ -x "$BACKEND_DIR/pc-separation-python/bin/python" ]]; then
+    echo "pc-separation Python: $("$BACKEND_DIR/pc-separation-python/bin/python" --version 2>&1)"
+  else
+    echo "pc-separation Python: missing"
+  fi
+  if [[ -f "$BACKEND_DIR/pc-separation/checkpoints/HDMC20_R_H_HU_HUS/hdemucs_best.pth" ]]; then
+    echo "pc-separation HDMC checkpoint: present"
+  else
+    echo "pc-separation HDMC checkpoint: missing"
+  fi
 else
   echo
   echo "Backend staged: no"

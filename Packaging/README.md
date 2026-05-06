@@ -4,10 +4,12 @@ The project is set up so GitHub can own build artifacts and tagged releases.
 
 ## Developer DMG
 
-This creates a local unsigned/ad-hoc signed DMG using the existing `.venv`:
+This creates a local unsigned/ad-hoc signed DMG using the existing Transkun
+`.venv` plus the separate pc-separation environment/assets:
 
 ```bash
 ./Packaging/build_backend_dev.sh
+PYTHON_BIN=python3.10 ./Packaging/build_pc_separation_release.sh
 ./Packaging/package_dmg.sh --dev-venv-ok --skip-notarize
 ```
 
@@ -32,16 +34,16 @@ availability, and detects broken `ffmpeg`/`ffprobe` binaries.
 ## Optional Piano/Orchestra Separation
 
 The app can run an optional pc-separation pre-step before Transkun. That backend
-is intentionally separate from the Transkun venv because pc-separation has an
-older dependency profile.
+is intentionally separate from the Transkun runtime because pc-separation has a
+different dependency profile.
 
-Developer setup:
+Release asset setup:
 
 ```bash
-./Packaging/build_pc_separation_dev.sh --download-weights
+PYTHON_BIN=python3.10 ./Packaging/build_pc_separation_release.sh
 export PIANO_TRANSCRIBE_PC_SEPARATION_ROOT="$PWD/External/pc-separation"
 export PIANO_TRANSCRIBE_PC_SEPARATION_PYTHON="$PWD/.pc-separation-env/bin/python"
-./script/build_and_run.sh
+"$PIANO_TRANSCRIBE_PC_SEPARATION_PYTHON" Backend/pc_separator_smoke_test.py
 ```
 
 For a quick configuration check:
@@ -52,14 +54,25 @@ For a quick configuration check:
   --repo "$PIANO_TRANSCRIBE_PC_SEPARATION_ROOT"
 ```
 
-The release app still needs a packaged pc-separation runtime and pretrained
-weights before this feature is redistributable.
+The release packaging path stages only the HDMC separator source/config and
+`checkpoints/HDMC20_R_H_HU_HUS/hdemucs_best.pth` into the app bundle. The
+script writes SHA256 and provenance notes next to the staged upstream checkout.
+
+App E2E with the separator enabled:
+
+```bash
+PIANO_TRANSCRIBE_TEST_SEPARATOR=1 \
+PIANO_TRANSCRIBE_PC_SEPARATION_ROOT="$PWD/External/pc-separation" \
+PIANO_TRANSCRIBE_PC_SEPARATION_PYTHON="$PWD/.pc-separation-env/bin/python" \
+./script/app_e2e.sh
+```
 
 ## Public Release Requirements
 
 Before public release:
 
 - Replace the developer `.venv` backend staging with a standalone Python 3.12 runtime.
+- Replace the developer `.pc-separation-env` staging with a standalone Python 3.10 runtime.
 - Bundle a vetted LGPL-compatible `ffmpeg` and `ffprobe` build.
 - Complete `Contents/Resources/Backend/licenses`.
 - Sign every nested executable and dynamic library.
@@ -97,5 +110,5 @@ Then run:
 ./Packaging/package_dmg.sh --dev-venv-ok
 ```
 
-For the final release, remove `--dev-venv-ok` after the standalone runtime flow
-is implemented.
+For the final release, remove `--dev-venv-ok` after the standalone runtime flows
+for both Transkun and pc-separation are implemented.

@@ -88,6 +88,14 @@ launch_and_wait() {
     open_args+=(--env "PIANO_TRANSCRIBE_AUTORUN_PREPROCESSOR=$preprocessor")
   fi
 
+  if [[ -n "${PIANO_TRANSCRIBE_PC_SEPARATION_ROOT:-}" ]]; then
+    open_args+=(--env "PIANO_TRANSCRIBE_PC_SEPARATION_ROOT=$PIANO_TRANSCRIBE_PC_SEPARATION_ROOT")
+  fi
+
+  if [[ -n "${PIANO_TRANSCRIBE_PC_SEPARATION_PYTHON:-}" ]]; then
+    open_args+=(--env "PIANO_TRANSCRIBE_PC_SEPARATION_PYTHON=$PIANO_TRANSCRIBE_PC_SEPARATION_PYTHON")
+  fi
+
   if [[ -n "$output_folder" ]]; then
     open_args+=(--env "PIANO_TRANSCRIBE_AUTORUN_OUTPUT_FOLDER=$output_folder")
   fi
@@ -142,13 +150,31 @@ assert "MIDI files are not valid input" in result["message"], result
 print("App E2E MIDI rejection OK")
 PY
 
-launch_and_wait "$INPUT_WAV" "" "$SEPARATION_RESULT_JSON" "pc-separation"
-".venv/bin/python" - <<PY
+if [[ "${PIANO_TRANSCRIBE_TEST_SEPARATOR:-0}" == "1" ]]; then
+  launch_and_wait "$INPUT_WAV" "$OUTPUT_MID" "$SEPARATION_RESULT_JSON" "pc-separation"
+  ".venv/bin/python" - <<PY
+import json
+from pathlib import Path
+
+result = json.loads(Path("$SEPARATION_RESULT_JSON").read_text())
+assert result["status"] == "completed", result
+assert result["outputExists"] is True, result
+assert result["output"] == "$OUTPUT_MID", result
+assert Path("$OUTPUT_MID").stat().st_size > 0, result
+print("App E2E bundled separation OK:", "$OUTPUT_MID")
+PY
+else
+  launch_and_wait "$INPUT_WAV" "" "$SEPARATION_RESULT_JSON" "pc-separation"
+  ".venv/bin/python" - <<PY
 import json
 from pathlib import Path
 
 result = json.loads(Path("$SEPARATION_RESULT_JSON").read_text())
 assert result["status"] == "failed", result
-assert "separation needs its separate backend" in result["message"], result
+assert (
+    "separation backend is missing" in result["message"]
+    or "pc-separation files" in result["message"]
+), result
 print("App E2E separation setup error OK")
 PY
+fi

@@ -20,7 +20,7 @@ BACKEND_DIR="$APP_BUNDLE/Contents/Resources/Backend"
 if [[ -d "$BACKEND_DIR" ]]; then
   while IFS= read -r -d '' file; do
     if [[ -x "$file" ]] || file "$file" | grep -Eq 'Mach-O|dynamically linked'; then
-      codesign "${sign_args[@]}" "$file" >/dev/null 2>&1 || true
+      codesign "${sign_args[@]}" "$file"
     fi
   done < <(find "$BACKEND_DIR" -type f -print0)
 fi

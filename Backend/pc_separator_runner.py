@@ -30,6 +30,13 @@ def validate_repo(repo: Path) -> list[str]:
             f"Missing pretrained checkpoints in {checkpoint_dir}. "
             "Run Packaging/build_pc_separation_dev.sh --download-weights."
         )
+    else:
+        hdmc_best = checkpoint_dir / "HDMC20_R_H_HU_HUS" / "hdemucs_best.pth"
+        if not hdmc_best.exists():
+            failures.append(
+                f"Missing HDMC pretrained checkpoint: {hdmc_best}. "
+                "Run Packaging/build_pc_separation_release.sh."
+            )
 
     return failures
 
@@ -58,6 +65,20 @@ def doctor(repo: Path) -> int:
         result["torchaudio"] = torchaudio.__version__
     except Exception as exc:
         failures.append(f"Could not import torchaudio: {exc}")
+
+    try:
+        import soundfile
+
+        result["soundfile"] = getattr(soundfile, "__version__", "available")
+    except Exception as exc:
+        failures.append(f"Could not import soundfile: {exc}")
+
+    try:
+        import pydub
+
+        result["pydub"] = getattr(pydub, "__version__", "available")
+    except Exception as exc:
+        failures.append(f"Could not import pydub: {exc}")
 
     try:
         import yaml
@@ -96,6 +117,39 @@ def normalize_audio(audio, sample_rate: int, target_rate: int, channels: int):
     return audio.repeat(repeats, 1)[:channels, :]
 
 
+def load_audio(path: Path):
+    import numpy as np
+    import soundfile as sf
+    import torch
+
+    try:
+        samples, sample_rate = sf.read(str(path), always_2d=True, dtype="float32")
+    except Exception:
+        from pydub import AudioSegment
+
+        segment = AudioSegment.from_file(str(path))
+        raw = np.array(segment.get_array_of_samples())
+        if segment.channels > 1:
+            samples = raw.reshape((-1, segment.channels))
+        else:
+            samples = raw.reshape((-1, 1))
+
+        scale = float(1 << (8 * segment.sample_width - 1))
+        samples = samples.astype(np.float32) / scale
+        sample_rate = segment.frame_rate
+
+    audio = torch.from_numpy(np.ascontiguousarray(samples.T))
+    return audio, int(sample_rate)
+
+
+def save_audio(path: Path, audio, sample_rate: int):
+    import numpy as np
+    import soundfile as sf
+
+    samples = audio.detach().cpu().float().clamp(-1.0, 1.0).numpy().T
+    sf.write(str(path), np.ascontiguousarray(samples), sample_rate)
+
+
 def separate(input_path: Path, output_path: Path, repo: Path, model: str, device: str) -> int:
     failures = validate_repo(repo)
     if failures:
@@ -105,8 +159,16 @@ def separate(input_path: Path, output_path: Path, repo: Path, model: str, device
     os.chdir(repo)
 
     import torch
-    import torchaudio
     from utils import init_separator
+
+    original_torch_load = torch.load
+
+    def compatible_torch_load(*args, **kwargs):
+        kwargs.setdefault("weights_only", False)
+        return original_torch_load(*args, **kwargs)
+
+    torch.load = compatible_torch_load
+    torch.set_grad_enabled(False)
 
     emit("loading_separator", model=model, device=device)
     separator = init_separator(model_type=model, device=device)
@@ -115,7 +177,7 @@ def separate(input_path: Path, output_path: Path, repo: Path, model: str, device
     channels = int(getattr(separator, "_num_channels", 2))
 
     emit("reading_audio", input=str(input_path))
-    audio, source_rate = torchaudio.load(str(input_path))
+    audio, source_rate = load_audio(input_path)
     audio = normalize_audio(audio, source_rate, sample_rate, channels)
     audio = audio.to(device)
 
@@ -132,7 +194,7 @@ def separate(input_path: Path, output_path: Path, repo: Path, model: str, device
 
     output_path.parent.mkdir(parents=True, exist_ok=True)
     emit("writing_piano_stem", output=str(output_path))
-    torchaudio.save(str(output_path), piano, sample_rate)
+    save_audio(output_path, piano, sample_rate)
     emit("done", output=str(output_path))
 
     return 0

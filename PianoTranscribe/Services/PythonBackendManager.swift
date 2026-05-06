@@ -10,6 +10,7 @@ struct PianoSeparationBackend {
     let pythonExecutableURL: URL
     let runnerScriptURL: URL
     let repositoryURL: URL
+    let ffmpegBinDirectoryURL: URL?
 }
 
 enum PythonBackendError: LocalizedError {
@@ -52,6 +53,41 @@ struct PythonBackendManager {
         #endif
     }
 
+    static func isPianoSeparationBackendAvailable() -> Bool {
+        (try? resolvePianoSeparationBackend()) != nil
+    }
+
+    static func pianoSeparationUnavailableMessage() -> String? {
+        do {
+            _ = try resolvePianoSeparationBackend()
+            return nil
+        } catch let error as PythonBackendError {
+            switch error {
+            case .pianoSeparationBackendNotFound,
+                 .pianoSeparationRunnerNotFound,
+                 .pianoSeparationRepositoryNotFound:
+                #if DEBUG
+                return "Separator backend not installed."
+                #else
+                return "Piano/orchestra separation backend is missing or damaged."
+                #endif
+            default:
+                return nil
+            }
+        } catch {
+            return "Separator backend not installed."
+        }
+    }
+
+    static func pianoSeparationUnavailableDetails() -> String? {
+        do {
+            _ = try resolvePianoSeparationBackend()
+            return nil
+        } catch {
+            return error.localizedDescription
+        }
+    }
+
     private static func resolveDebugBackend() throws -> PythonBackend {
         let environment = ProcessInfo.processInfo.environment
         var candidateRoots: [URL] = []
@@ -88,12 +124,18 @@ struct PythonBackendManager {
             throw PythonBackendError.backendNotFound(["Bundle.main.resourceURL"])
         }
 
-        let python = resources.appendingPathComponent("Backend/python/bin/python3.12")
+        let pythonCandidates = [
+            resources.appendingPathComponent("Backend/python/bin/python3.12"),
+            resources.appendingPathComponent("Backend/python/bin/python3"),
+            resources.appendingPathComponent("Backend/python/bin/python")
+        ]
         let runner = resources.appendingPathComponent("Backend/transkun_runner.py")
         let ffmpegDir = resources.appendingPathComponent("Backend/bin")
 
-        guard FileManager.default.isExecutableFile(atPath: python.path) else {
-            throw PythonBackendError.backendNotFound([python.path])
+        guard let python = pythonCandidates.first(where: {
+            FileManager.default.isExecutableFile(atPath: $0.path)
+        }) else {
+            throw PythonBackendError.backendNotFound(pythonCandidates.map(\.path))
         }
         guard FileManager.default.fileExists(atPath: runner.path) else {
             throw PythonBackendError.runnerNotFound([runner.path])
@@ -134,16 +176,17 @@ struct PythonBackendManager {
         }
         repoCandidates.append(projectRoot.appendingPathComponent("External/pc-separation", isDirectory: true))
 
-        guard let repo = repoCandidates.first(where: {
-            FileManager.default.fileExists(atPath: $0.appendingPathComponent("utils.py").path)
-        }) else {
-            throw PythonBackendError.pianoSeparationRepositoryNotFound(repoCandidates.map(\.path))
+        guard let repo = repoCandidates.first(where: isValidPianoSeparationRepository(_:)) else {
+            throw PythonBackendError.pianoSeparationRepositoryNotFound(
+                repoCandidates.flatMap { checkedPianoSeparationRepositoryPaths($0) }
+            )
         }
 
         return PianoSeparationBackend(
             pythonExecutableURL: python,
             runnerScriptURL: runner,
-            repositoryURL: repo
+            repositoryURL: repo,
+            ffmpegBinDirectoryURL: nil
         )
     }
 
@@ -152,24 +195,48 @@ struct PythonBackendManager {
             throw PythonBackendError.pianoSeparationBackendNotFound(["Bundle.main.resourceURL"])
         }
 
-        let python = resources.appendingPathComponent("Backend/pc-separation-python/bin/python")
+        let pythonCandidates = [
+            resources.appendingPathComponent("Backend/pc-separation-python/bin/python3.10"),
+            resources.appendingPathComponent("Backend/pc-separation-python/bin/python3"),
+            resources.appendingPathComponent("Backend/pc-separation-python/bin/python")
+        ]
         let runner = resources.appendingPathComponent("Backend/pc_separator_runner.py")
         let repo = resources.appendingPathComponent("Backend/pc-separation")
+        let ffmpegDir = resources.appendingPathComponent("Backend/bin")
 
-        guard FileManager.default.isExecutableFile(atPath: python.path) else {
-            throw PythonBackendError.pianoSeparationBackendNotFound([python.path])
+        guard let python = pythonCandidates.first(where: {
+            FileManager.default.isExecutableFile(atPath: $0.path)
+        }) else {
+            throw PythonBackendError.pianoSeparationBackendNotFound(pythonCandidates.map(\.path))
         }
         guard FileManager.default.fileExists(atPath: runner.path) else {
             throw PythonBackendError.pianoSeparationRunnerNotFound([runner.path])
         }
-        guard FileManager.default.fileExists(atPath: repo.appendingPathComponent("utils.py").path) else {
-            throw PythonBackendError.pianoSeparationRepositoryNotFound([repo.path])
+        guard isValidPianoSeparationRepository(repo) else {
+            throw PythonBackendError.pianoSeparationRepositoryNotFound(
+                checkedPianoSeparationRepositoryPaths(repo)
+            )
         }
 
         return PianoSeparationBackend(
             pythonExecutableURL: python,
             runnerScriptURL: runner,
-            repositoryURL: repo
+            repositoryURL: repo,
+            ffmpegBinDirectoryURL: ffmpegDir
         )
+    }
+
+    private static func isValidPianoSeparationRepository(_ repo: URL) -> Bool {
+        checkedPianoSeparationRepositoryPaths(repo).allSatisfy {
+            FileManager.default.fileExists(atPath: $0)
+        }
+    }
+
+    private static func checkedPianoSeparationRepositoryPaths(_ repo: URL) -> [String] {
+        [
+            repo.appendingPathComponent("utils.py").path,
+            repo.appendingPathComponent("config/cfg_hdemucs.yaml").path,
+            repo.appendingPathComponent("checkpoints/HDMC20_R_H_HU_HUS/hdemucs_best.pth").path
+        ]
     }
 }

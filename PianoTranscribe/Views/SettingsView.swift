@@ -13,8 +13,9 @@ struct SettingsView: View {
                 }
 
                 Toggle("Separate piano from orchestra", isOn: $model.isPianoSeparationEnabled)
+                    .disabled(!model.isPianoSeparationAvailable)
 
-                Text("Requires the separate pc-separation backend and downloaded weights.")
+                Text(model.isPianoSeparationAvailable ? "Uses the bundled HDMC pc-separation model." : model.pianoSeparationAvailabilityMessage)
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }

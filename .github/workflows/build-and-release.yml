@@ -18,10 +18,16 @@ jobs:
   build-macos:
     name: macOS 26 build
     runs-on: macos-26
+    timeout-minutes: 90
 
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
+
+      - name: Set up Python 3.10
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.10"
 
       - name: Set up Python 3.12
         uses: actions/setup-python@v5
@@ -32,16 +38,30 @@ jobs:
         run: |
           xcodebuild -version
           swift --version
+          python3.10 --version
           python3.12 --version
 
       - name: Build and smoke-test backend
         run: ./Packaging/build_backend_dev.sh
 
+      - name: Build and smoke-test pc-separation backend
+        run: |
+          PYTHON_BIN=python3.10 ./Packaging/build_pc_separation_release.sh
+          PIANO_TRANSCRIBE_PC_SEPARATION_ROOT="$PWD/External/pc-separation" \
+          "$PWD/.pc-separation-env/bin/python" Backend/pc_separator_smoke_test.py
+
       - name: Run app E2E smoke test
+        env:
+          PIANO_TRANSCRIBE_TEST_SEPARATOR: "1"
+          PIANO_TRANSCRIBE_PC_SEPARATION_ROOT: ${{ github.workspace }}/External/pc-separation
+          PIANO_TRANSCRIBE_PC_SEPARATION_PYTHON: ${{ github.workspace }}/.pc-separation-env/bin/python
         run: ./script/app_e2e.sh
 
       - name: Build app and package developer DMG
         run: ./Packaging/package_dmg.sh --dev-venv-ok --skip-notarize
+
+      - name: Run release app E2E smoke test
+        run: ./script/release_app_e2e.sh "build/DerivedData/Build/Products/Release/Piano transcribe.app"
 
       - name: Upload DMG artifact
         uses: actions/upload-artifact@v4

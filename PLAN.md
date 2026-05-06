@@ -6,23 +6,22 @@ This file is the persistent build plan for Piano transcribe, a native macOS wrap
 
 ## Progress Tracker
 
-Current status: Developer MVP is implemented and verified. Backend WAV/MP3 smoke tests pass on CPU, the SwiftUI app builds and launches, automated app E2E audio -> MIDI passes, `.mid` input rejection passes, configurable MIDI output destination passes, and the private GitHub repository has a macOS 26 workflow for backend smoke testing, app E2E testing, Release building, DMG packaging, and artifact upload.
+Current status: Developer MVP is implemented and verified. Backend WAV/MP3 smoke tests pass on CPU, the SwiftUI app builds and launches, automated app E2E audio -> MIDI passes, `.mid` input rejection passes, configurable MIDI output destination passes, bundled HDMC piano/orchestra separation passes locally, and the private GitHub repository has a macOS 26 workflow for backend smoke testing, app E2E testing, Release building, DMG packaging, release-app E2E, and artifact upload.
 
 | Milestone | Status | Notes |
 | --- | --- | --- |
 | 1. Terminal proof of concept | Complete | Python 3.12 venv created. WAV and MP3 audio -> MIDI smoke tests pass on CPU. |
 | 2. SwiftUI shell | Complete | Main window, drop zone, file importer, device picker, status, logs, settings, and cancel command are implemented. |
 | 3. Swift-to-Python integration | Complete | `TranscriptionService` invokes Python with `Process`, captures stdout/stderr, copies `output.mid`, and `script/app_e2e.sh` verifies real app audio -> MIDI, same-folder output, custom-folder output, and `.mid` rejection. |
-| 4. Release backend packaging | Started | Added scripts and GitHub Actions workflow for Release build, backend staging, signing, DMG creation, artifact upload, and tag releases. Full standalone Python/ffmpeg bundling and license collection are still pending. |
+| 4. Release backend packaging | Started | Release staging now includes separate Transkun and pc-separation runtimes, HDMC-only separator source/checkpoint assets, bundled ffmpeg, license/provenance notes, signing, DMG creation, artifact upload, and release-app E2E. Full standalone Python runtime hardening and complete dependency license collection are still pending. |
 | 5. Signing and notarization | Started | Added signing, entitlement, readiness, and notarization scripts. Current Release app has hardened runtime and empty entitlements, but real notarization still needs Developer ID identity and Apple credentials. |
-| Future separation pre-step | Optional developer hook implemented | `AudioPreprocessor`, `NoOpPreprocessor`, and `PianoConcertoSeparationPreprocessor` are present. The app can call a separate pc-separation backend before Transkun when that environment and pretrained weights are installed. |
+| Piano/orchestra separation | Bundled path implemented | `PianoConcertoSeparationPreprocessor` runs `Backend/pc_separator_runner.py` with a separate Python 3.10 environment, pinned `pc-separation` source, and the HDMC checkpoint. Debug builds enable the checkbox only when local assets are present; release builds require bundled assets. |
 
 Current open work:
 
-- Build a true standalone release backend that does not depend on `.venv`, system Python, or Homebrew.
-- Bundle vetted LGPL-compatible `ffmpeg`/`ffprobe` and include license notices.
+- Replace developer-venv staging with true standalone Python runtime staging for both Transkun and pc-separation.
+- Bundle vetted LGPL-compatible `ffmpeg`/`ffprobe` and complete license notices.
 - Configure Developer ID signing identity and Apple notarization credentials in GitHub Actions secrets.
-- Package the separate pc-separation runtime and pretrained weights for release if piano/orchestra separation should ship to non-developer users.
 - Create a tag release after the above release prerequisites are satisfied.
 
 GitHub tracking:
@@ -118,6 +117,13 @@ GitHub tracking:
   - Settings now lets the user choose between saving beside the source audio or saving to a custom folder.
   - Custom folder selection uses a native macOS folder picker and persists the chosen path in user defaults for the non-sandboxed MVP.
   - Autorun/E2E support now forces deterministic output destination modes and verifies custom-folder saving.
+- Bundled the HDMC piano/orchestra separation path for Release packaging:
+  - `Packaging/build_pc_separation_release.sh` pins `yiitozer/pc-separation` to `9edb8126a2ebb93852917da06d2ce3619ea15c4d`.
+  - The release asset script downloads only `checkpoints/HDMC20_R_H_HU_HUS/hdemucs_best.pth`, verifies it, and writes SHA256/provenance notes.
+  - `Backend/pc_separator_runner.py` avoids `torchaudio.load`/`save` runtime `torchcodec` requirements by using `soundfile` with a `pydub`/ffmpeg fallback for compressed input.
+  - `Backend/pc_separator_smoke_test.py` verifies the separator writes a non-empty `piano-separated.wav`.
+  - `script/app_e2e.sh` now has a `PIANO_TRANSCRIBE_TEST_SEPARATOR=1` path that verifies app UI automation through separator -> Transkun -> MIDI.
+  - Release staging copies `Backend/pc-separation-python`, `Backend/pc-separation`, `Backend/pc_separator_runner.py`, and bundled license/provenance notes into the app bundle.
 
 ## 1. MVP Product Definition
 
@@ -660,11 +666,19 @@ Implement clear user-facing errors for:
 
 The UI should never show only a raw traceback. Keep a collapsible details log area for advanced errors.
 
-## 20. Future Separation Pre-Step Design
+## 20. Piano/Orchestra Separation Design
 
-Keep the MVP pipeline extensible now, but do not implement piano/orchestra separation yet.
+The optional `pc-separation` pre-step is implemented for the HDMC model only. It stays isolated from the Transkun Python 3.12 backend because `pc-separation` has a different dependency profile and should not be merged into the Transkun environment.
 
-The future `pc-separation` repo describes a pipeline for decomposing piano concerto recordings into separate piano and orchestral tracks. It has a different and older dependency profile, including pinned PyTorch 1.13-era packages. Treat it as a separate backend environment or plugin, not something to merge into the Transkun environment immediately.
+Release bundles stage:
+
+```text
+Contents/Resources/Backend/
+  python/                  # Transkun runtime
+  pc-separation-python/    # Separate pc-separation runtime
+  pc-separation/           # Pinned source/config plus HDMC checkpoint only
+  licenses/                # Preliminary notices and source/weight provenance
+```
 
 Design the pipeline like this:
 
@@ -673,14 +687,24 @@ protocol AudioPreprocessor {
     var id: String { get }
     var displayName: String { get }
 
-    func process(inputURL: URL, jobDirectory: URL) async throws -> URL
+    func process(
+        inputURL: URL,
+        jobDirectory: URL,
+        logHandler: @escaping @Sendable (String) -> Void,
+        processRunner: AudioProcessRunner
+    ) async throws -> URL
 }
 
 struct NoOpPreprocessor: AudioPreprocessor {
     let id = "none"
     let displayName = "No preprocessing"
 
-    func process(inputURL: URL, jobDirectory: URL) async throws -> URL {
+    func process(
+        inputURL: URL,
+        jobDirectory: URL,
+        logHandler: @escaping @Sendable (String) -> Void,
+        processRunner: AudioProcessRunner
+    ) async throws -> URL {
         inputURL
     }
 }
@@ -689,24 +713,30 @@ struct PianoConcertoSeparationPreprocessor: AudioPreprocessor {
     let id = "pc-separation"
     let displayName = "Separate piano from orchestra"
 
-    func process(inputURL: URL, jobDirectory: URL) async throws -> URL {
-        // Future:
+    func process(
+        inputURL: URL,
+        jobDirectory: URL,
+        logHandler: @escaping @Sendable (String) -> Void,
+        processRunner: AudioProcessRunner
+    ) async throws -> URL {
         // 1. Run pc-separation backend.
-        // 2. Save piano stem to jobDirectory/piano.wav.
-        // 3. Return piano stem URL.
-        fatalError("Not implemented in MVP")
+        // 2. Save piano stem to jobDirectory/piano-separated.wav.
+        // 3. Return piano stem URL for Transkun.
+        let outputURL = jobDirectory.appendingPathComponent("piano-separated.wav")
+        return outputURL
     }
 }
 ```
 
-Future UX:
+UX:
 
 ```text
 [ ] Separate piano from orchestra before transcription
-    Disabled label: Coming later / experimental
+    Debug without local assets: disabled, "Separator backend not installed."
+    Release with bundled assets: enabled
 ```
 
-Future flow:
+Flow:
 
 ```text
 Input concerto audio
@@ -773,15 +803,18 @@ Acceptance criteria:
 
 Deliverable:
 
-- Bundled Python 3.12 backend or PyInstaller onedir backend.
+- Bundled Python 3.12 Transkun backend.
+- Bundled Python 3.10 pc-separation backend.
+- Bundled HDMC pc-separation source/checkpoint assets.
 - Bundled ffmpeg/ffprobe.
-- App runs on a clean macOS 26 machine without Homebrew.
+- App runs on a clean macOS 26 machine without Homebrew, Conda, local `.venv`, or first-run downloads.
 
 Acceptance criteria:
 
 - No dependency on developer machine `.venv`.
 - No dependency on system Python.
 - No dependency on Homebrew ffmpeg.
+- Release app E2E verifies audio -> separator -> Transkun -> MIDI from inside the `.app`.
 
 ### Milestone 5: Signing and Notarization
 
@@ -811,15 +844,18 @@ Create:
 - `TranscriptionService`.
 - `PythonBackendManager`.
 - `FileAccess` helper.
-- `AudioPreprocessor` placeholder types.
+- `AudioPreprocessor` types.
 - `Backend/transkun_runner.py`.
+- `Backend/pc_separator_runner.py`.
 - `Backend/requirements-transkun.lock`.
 - `Backend/smoke_test.py`.
+- `Backend/pc_separator_smoke_test.py`.
 - `Packaging/build_backend_dev.sh`.
+- `Packaging/build_pc_separation_release.sh`.
 
 Use Python 3.12 for the backend. Do not rely on Python 3.13+. Bundle or plan to bundle ffmpeg for release. The MVP may use a local `.venv` in DEBUG.
 
-Keep the code structured so a future `AudioPreprocessor` step can be inserted before Transkun. Add a placeholder `NoOpPreprocessor` and a not-yet-implemented `PianoConcertoSeparationPreprocessor` for future pc-separation support.
+Keep the Transkun and pc-separation Python stacks isolated. Default to no preprocessing; when `Separate piano` is enabled and assets are available, run pc-separation HDMC first and pass the generated piano stem to Transkun.
 
 ## Source Links From Original Plan
 

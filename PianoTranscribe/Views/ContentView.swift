@@ -30,6 +30,7 @@ struct ContentView: View {
             onCompletion: model.handleImporterResult(_:)
         )
         .task {
+            model.refreshPianoSeparationAvailability()
             model.runStartupAutomationIfNeeded()
         }
     }
@@ -73,7 +74,12 @@ struct ContentView: View {
                 Label("Separate piano", systemImage: "pianokeys.inverse")
             }
             .toggleStyle(.checkbox)
-            .help("Run the optional pc-separation backend before transcription.")
+            .disabled(!model.isPianoSeparationAvailable)
+            .help(
+                model.isPianoSeparationAvailable
+                    ? "Run the bundled pc-separation backend before transcription."
+                    : model.pianoSeparationAvailabilityMessage
+            )
 
             Spacer()
 

@@ -53,7 +53,12 @@ struct PianoConcertoSeparationPreprocessor: AudioPreprocessor {
 
         var environment = ProcessInfo.processInfo.environment
         environment["PYTHONUNBUFFERED"] = "1"
+        environment["PYTHONDONTWRITEBYTECODE"] = "1"
         environment["PIANO_TRANSCRIBE_PC_SEPARATION_ROOT"] = backend.repositoryURL.path
+        if let ffmpegDir = backend.ffmpegBinDirectoryURL {
+            let existingPath = environment["PATH"] ?? "/usr/bin:/bin:/usr/sbin:/sbin"
+            environment["PATH"] = "\(ffmpegDir.path):\(existingPath)"
+        }
 
         _ = try await processRunner(
             backend.pythonExecutableURL,

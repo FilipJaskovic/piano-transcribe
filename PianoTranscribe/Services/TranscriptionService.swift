@@ -59,6 +59,7 @@ final class TranscriptionService: @unchecked Sendable {
             environment["PATH"] = "\(ffmpegDir.path):\(existingPath)"
         }
         environment["PYTHONUNBUFFERED"] = "1"
+        environment["PYTHONDONTWRITEBYTECODE"] = "1"
 
         _ = try await runProcess(
             executableURL: backend.pythonExecutableURL,

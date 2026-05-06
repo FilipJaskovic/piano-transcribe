@@ -27,6 +27,9 @@ final class AppModel {
     var isImporterPresented = false
     var isDropTargeted = false
     var isLogExpanded = true
+    var isPianoSeparationAvailable = false
+    var pianoSeparationAvailabilityMessage = "Separator backend not installed."
+    var pianoSeparationAvailabilityDetails: String?
 
     private let transcriptionService = TranscriptionService()
     private var transcriptionTask: Task<Void, Never>?
@@ -43,6 +46,8 @@ final class AppModel {
         if let path = defaults.string(forKey: SettingsKeys.customOutputFolderPath), !path.isEmpty {
             customOutputFolderURL = URL(fileURLWithPath: path, isDirectory: true)
         }
+
+        refreshPianoSeparationAvailability()
     }
 
     var canCancel: Bool {
@@ -82,6 +87,17 @@ final class AppModel {
     func transcribe(sourceURL: URL) {
         guard !status.isInProgress else {
             appendLog("A transcription is already running.")
+            return
+        }
+
+        refreshPianoSeparationAvailability()
+        if isPianoSeparationEnabled && !isPianoSeparationAvailable {
+            status = .failed(pianoSeparationAvailabilityMessage)
+            appendLog(pianoSeparationAvailabilityMessage)
+            if let details = pianoSeparationAvailabilityDetails,
+               details != pianoSeparationAvailabilityMessage {
+                appendLog(details)
+            }
             return
         }
 
@@ -129,6 +145,7 @@ final class AppModel {
             outputDestinationMode = .customFolder
         }
 
+        refreshPianoSeparationAvailability()
         logLines.removeAll()
         status = .copyingInput
 
@@ -148,6 +165,13 @@ final class AppModel {
         transcriptionService.cancel()
         status = .cancelled
         appendLog("Cancelled.")
+    }
+
+    func refreshPianoSeparationAvailability() {
+        isPianoSeparationAvailable = PythonBackendManager.isPianoSeparationBackendAvailable()
+        pianoSeparationAvailabilityMessage = PythonBackendManager.pianoSeparationUnavailableMessage()
+            ?? "Separator backend installed."
+        pianoSeparationAvailabilityDetails = PythonBackendManager.pianoSeparationUnavailableDetails()
     }
 
     func handleImporterResult(_ result: Result<[URL], Error>) {
@@ -332,11 +356,11 @@ final class AppModel {
             case .runnerNotFound:
                 return "Transkun runner script was not found."
             case .pianoSeparationBackendNotFound:
-                return "Piano/orchestra separation needs its separate backend. Run Packaging/build_pc_separation_dev.sh first."
+                return "Piano/orchestra separation backend is missing or damaged."
             case .pianoSeparationRunnerNotFound:
                 return "Piano/orchestra separation runner script was not found."
             case .pianoSeparationRepositoryNotFound:
-                return "pc-separation checkout was not found. Run Packaging/build_pc_separation_dev.sh first."
+                return "Bundled pc-separation files or HDMC checkpoint are missing."
             }
         }
 
