@@ -45,7 +45,7 @@ struct StatusView: View {
             case .idle:
                 Image(systemName: "music.note")
                     .foregroundStyle(.secondary)
-            case .preparingBackend, .copyingInput, .transcribing, .savingOutput:
+            case .preparingBackend, .copyingInput, .separatingPiano, .transcribing, .savingOutput:
                 Image(systemName: "gearshape.2")
                     .foregroundStyle(.secondary)
             }
@@ -62,6 +62,8 @@ struct StatusView: View {
             "Checking the local Python backend."
         case .copyingInput:
             "Copying the selected file into a job folder."
+        case .separatingPiano:
+            "Running the optional piano/orchestra separation backend."
         case .transcribing:
             "Running Transkun V2."
         case .savingOutput:

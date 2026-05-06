@@ -15,13 +15,14 @@ Current status: Developer MVP is implemented and verified. Backend WAV/MP3 smoke
 | 3. Swift-to-Python integration | Complete | `TranscriptionService` invokes Python with `Process`, captures stdout/stderr, copies `output.mid`, and `script/app_e2e.sh` verifies real app audio -> MIDI plus `.mid` rejection. |
 | 4. Release backend packaging | Started | Added scripts and GitHub Actions workflow for Release build, backend staging, signing, DMG creation, artifact upload, and tag releases. Full standalone Python/ffmpeg bundling and license collection are still pending. |
 | 5. Signing and notarization | Started | Added signing, entitlement, readiness, and notarization scripts. Current Release app has hardened runtime and empty entitlements, but real notarization still needs Developer ID identity and Apple credentials. |
-| Future separation pre-step | Placeholder complete | `AudioPreprocessor`, `NoOpPreprocessor`, and `PianoConcertoSeparationPreprocessor` are present; pc-separation is intentionally not bundled into the Transkun environment. |
+| Future separation pre-step | Optional developer hook implemented | `AudioPreprocessor`, `NoOpPreprocessor`, and `PianoConcertoSeparationPreprocessor` are present. The app can call a separate pc-separation backend before Transkun when that environment and pretrained weights are installed. |
 
 Current open work:
 
 - Build a true standalone release backend that does not depend on `.venv`, system Python, or Homebrew.
 - Bundle vetted LGPL-compatible `ffmpeg`/`ffprobe` and include license notices.
 - Configure Developer ID signing identity and Apple notarization credentials in GitHub Actions secrets.
+- Package the separate pc-separation runtime and pretrained weights for release if piano/orchestra separation should ship to non-developer users.
 - Create a tag release after the above release prerequisites are satisfied.
 
 GitHub tracking:
@@ -103,6 +104,16 @@ GitHub tracking:
   - `./script/app_e2e.sh`: passed.
   - Release `xcodebuild`: passed.
   - `./Packaging/check_release_readiness.sh "build/DerivedData/Build/Products/Release/Piano transcribe.app"`: valid ad-hoc signed Release app with hardened runtime and empty entitlements; distribution still blocked by missing Developer ID identity, missing notarization credentials, and no staged standalone backend in the local build.
+- Added optional piano/orchestra separation integration:
+  - Main UI and Settings now expose `Separate piano`.
+  - `PianoConcertoSeparationPreprocessor` invokes `Backend/pc_separator_runner.py` through a separate pc-separation Python environment.
+  - `Packaging/build_pc_separation_dev.sh` clones `yiitozer/pc-separation`, creates a separate conda environment, and can download pretrained weights.
+  - `script/build_and_run.sh` forwards pc-separation environment variables when present.
+  - `script/app_e2e.sh` verifies the missing-separator-backend error path.
+- Hardened same-folder MIDI saving:
+  - Default app output remains `<input-name>-transkun.mid` next to the selected audio file.
+  - `FileAccess.saveOutput` now performs the final copy through the file-access helper with security-scoped access attempts.
+  - `script/app_e2e.sh` now verifies the default output path is beside the input file.
 
 ## 1. MVP Product Definition
 

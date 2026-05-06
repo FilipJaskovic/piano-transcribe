@@ -69,6 +69,12 @@ struct ContentView: View {
             .labelsHidden()
             .frame(width: 240)
 
+            Toggle(isOn: $model.isPianoSeparationEnabled) {
+                Label("Separate piano", systemImage: "pianokeys.inverse")
+            }
+            .toggleStyle(.checkbox)
+            .help("Run the optional pc-separation backend before transcription.")
+
             Spacer()
 
             Button {

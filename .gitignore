@@ -1,5 +1,8 @@
 .DS_Store
 .venv/
+.venv-pc-separation/
+.pc-separation-env/
+External/
 build/
 DerivedData/
 dist/

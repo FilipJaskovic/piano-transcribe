@@ -4,6 +4,7 @@ enum TranscriptionStatus: Equatable {
     case idle
     case preparingBackend
     case copyingInput
+    case separatingPiano
     case transcribing
     case savingOutput
     case completed(URL)
@@ -12,7 +13,7 @@ enum TranscriptionStatus: Equatable {
 
     var isInProgress: Bool {
         switch self {
-        case .preparingBackend, .copyingInput, .transcribing, .savingOutput:
+        case .preparingBackend, .copyingInput, .separatingPiano, .transcribing, .savingOutput:
             true
         case .idle, .completed, .failed, .cancelled:
             false
@@ -27,6 +28,8 @@ enum TranscriptionStatus: Equatable {
             "Preparing backend"
         case .copyingInput:
             "Preparing audio"
+        case .separatingPiano:
+            "Separating piano"
         case .transcribing:
             "Transcribing"
         case .savingOutput:

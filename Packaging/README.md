@@ -29,6 +29,32 @@ python Backend/smoke_test.py
 `doctor.py` verifies Python 3.12, imports `torch` and `transkun`, reports MPS
 availability, and detects broken `ffmpeg`/`ffprobe` binaries.
 
+## Optional Piano/Orchestra Separation
+
+The app can run an optional pc-separation pre-step before Transkun. That backend
+is intentionally separate from the Transkun venv because pc-separation has an
+older dependency profile.
+
+Developer setup:
+
+```bash
+./Packaging/build_pc_separation_dev.sh --download-weights
+export PIANO_TRANSCRIBE_PC_SEPARATION_ROOT="$PWD/External/pc-separation"
+export PIANO_TRANSCRIBE_PC_SEPARATION_PYTHON="$PWD/.pc-separation-env/bin/python"
+./script/build_and_run.sh
+```
+
+For a quick configuration check:
+
+```bash
+"$PIANO_TRANSCRIBE_PC_SEPARATION_PYTHON" Backend/pc_separator_runner.py \
+  --doctor \
+  --repo "$PIANO_TRANSCRIBE_PC_SEPARATION_ROOT"
+```
+
+The release app still needs a packaged pc-separation runtime and pretrained
+weights before this feature is redistributable.
+
 ## Public Release Requirements
 
 Before public release:

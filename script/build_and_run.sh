@@ -25,7 +25,17 @@ xcodebuild \
   build
 
 open_app() {
-  /usr/bin/open -n "$APP_BUNDLE" --env "PIANO_TRANSCRIBE_ROOT=$ROOT_DIR"
+  local open_args=(-n "$APP_BUNDLE" --env "PIANO_TRANSCRIBE_ROOT=$ROOT_DIR")
+
+  if [[ -n "${PIANO_TRANSCRIBE_PC_SEPARATION_ROOT:-}" ]]; then
+    open_args+=(--env "PIANO_TRANSCRIBE_PC_SEPARATION_ROOT=$PIANO_TRANSCRIBE_PC_SEPARATION_ROOT")
+  fi
+
+  if [[ -n "${PIANO_TRANSCRIBE_PC_SEPARATION_PYTHON:-}" ]]; then
+    open_args+=(--env "PIANO_TRANSCRIBE_PC_SEPARATION_PYTHON=$PIANO_TRANSCRIBE_PC_SEPARATION_PYTHON")
+  fi
+
+  /usr/bin/open "${open_args[@]}"
 }
 
 case "$MODE" in
@@ -33,7 +43,11 @@ case "$MODE" in
     open_app
     ;;
   --debug|debug)
-    env "PIANO_TRANSCRIBE_ROOT=$ROOT_DIR" lldb -- "$APP_BINARY"
+    env \
+      "PIANO_TRANSCRIBE_ROOT=$ROOT_DIR" \
+      "PIANO_TRANSCRIBE_PC_SEPARATION_ROOT=${PIANO_TRANSCRIBE_PC_SEPARATION_ROOT:-}" \
+      "PIANO_TRANSCRIBE_PC_SEPARATION_PYTHON=${PIANO_TRANSCRIBE_PC_SEPARATION_PYTHON:-}" \
+      lldb -- "$APP_BINARY"
     ;;
   --logs|logs)
     open_app

@@ -17,11 +17,6 @@ enum TranscriptionServiceError: LocalizedError {
 final class TranscriptionService: @unchecked Sendable {
     private let processLock = NSLock()
     private var currentProcess: Process?
-    private let preprocessor: AudioPreprocessor
-
-    init(preprocessor: AudioPreprocessor = NoOpPreprocessor()) {
-        self.preprocessor = preprocessor
-    }
 
     func cancel() {
         processLock.withLocking {
@@ -33,6 +28,7 @@ final class TranscriptionService: @unchecked Sendable {
         sourceURL: URL,
         finalOutputURL: URL,
         device: TranskunDevice,
+        preprocessor: AudioPreprocessor,
         statusHandler: @escaping @Sendable (TranscriptionStatus) -> Void,
         logHandler: @escaping @Sendable (String) -> Void
     ) async throws -> URL {
@@ -43,15 +39,36 @@ final class TranscriptionService: @unchecked Sendable {
         statusHandler(.copyingInput)
         let workingInput = try FileAccess.prepareWorkingCopy(from: sourceURL, jobID: jobID)
         let jobDir = try FileAccess.jobDirectory(jobID: jobID)
-        let processedInput = try await preprocessor.process(inputURL: workingInput, jobDirectory: jobDir)
+
+        if preprocessor.requiresProcessing {
+            statusHandler(.separatingPiano)
+        }
+
+        let processedInput = try await preprocessor.process(
+            inputURL: workingInput,
+            jobDirectory: jobDir,
+            logHandler: logHandler,
+            processRunner: runProcess
+        )
         let workingOutput = jobDir.appendingPathComponent("output.mid")
 
         statusHandler(.transcribing)
-        _ = try await runBackend(
-            backend: backend,
-            inputURL: processedInput,
-            outputURL: workingOutput,
-            device: device,
+        var environment = ProcessInfo.processInfo.environment
+        if let ffmpegDir = backend.ffmpegBinDirectoryURL {
+            let existingPath = environment["PATH"] ?? "/usr/bin:/bin:/usr/sbin:/sbin"
+            environment["PATH"] = "\(ffmpegDir.path):\(existingPath)"
+        }
+        environment["PYTHONUNBUFFERED"] = "1"
+
+        _ = try await runProcess(
+            executableURL: backend.pythonExecutableURL,
+            arguments: [
+                backend.runnerScriptURL.path,
+                "--input", processedInput.path,
+                "--output", workingOutput.path,
+                "--device", device.rawValue
+            ],
+            environment: environment,
             logHandler: logHandler
         )
 
@@ -61,19 +78,14 @@ final class TranscriptionService: @unchecked Sendable {
 
         statusHandler(.savingOutput)
 
-        if FileManager.default.fileExists(atPath: finalOutputURL.path) {
-            try FileManager.default.removeItem(at: finalOutputURL)
-        }
-
-        try FileManager.default.copyItem(at: workingOutput, to: finalOutputURL)
+        try FileAccess.saveOutput(workingOutput, to: finalOutputURL, originalSourceURL: sourceURL)
         return finalOutputURL
     }
 
-    private func runBackend(
-        backend: PythonBackend,
-        inputURL: URL,
-        outputURL: URL,
-        device: TranskunDevice,
+    private func runProcess(
+        executableURL: URL,
+        arguments: [String],
+        environment: [String: String],
         logHandler: @escaping @Sendable (String) -> Void
     ) async throws -> String {
         let cancellationRequested = LockedFlag()
@@ -83,20 +95,8 @@ final class TranscriptionService: @unchecked Sendable {
                 let process = Process()
                 setCurrentProcess(process)
 
-                process.executableURL = backend.pythonExecutableURL
-                process.arguments = [
-                    backend.runnerScriptURL.path,
-                    "--input", inputURL.path,
-                    "--output", outputURL.path,
-                    "--device", device.rawValue
-                ]
-
-                var environment = ProcessInfo.processInfo.environment
-                if let ffmpegDir = backend.ffmpegBinDirectoryURL {
-                    let existingPath = environment["PATH"] ?? "/usr/bin:/bin:/usr/sbin:/sbin"
-                    environment["PATH"] = "\(ffmpegDir.path):\(existingPath)"
-                }
-                environment["PYTHONUNBUFFERED"] = "1"
+                process.executableURL = executableURL
+                process.arguments = arguments
                 process.environment = environment
 
                 let stdout = Pipe()

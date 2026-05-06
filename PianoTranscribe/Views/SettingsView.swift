@@ -2,7 +2,6 @@ import SwiftUI
 
 struct SettingsView: View {
     @Bindable var model: AppModel
-    @State private var futureSeparationEnabled = false
 
     var body: some View {
         Form {
@@ -12,10 +11,9 @@ struct SettingsView: View {
                 }
             }
 
-            Toggle("Separate piano from orchestra", isOn: $futureSeparationEnabled)
-                .disabled(true)
+            Toggle("Separate piano from orchestra", isOn: $model.isPianoSeparationEnabled)
 
-            Text("Coming later")
+            Text("Requires the separate pc-separation backend and downloaded weights.")
                 .font(.caption)
                 .foregroundStyle(.secondary)
         }

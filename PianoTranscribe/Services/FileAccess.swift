@@ -3,6 +3,7 @@ import Foundation
 enum FileAccessError: LocalizedError {
     case unsupportedInputExtension(String)
     case copyFailed(String)
+    case outputWriteFailed(String)
 
     var errorDescription: String? {
         switch self {
@@ -13,6 +14,8 @@ enum FileAccessError: LocalizedError {
             return "Unsupported input type: .\(ext). Choose an audio file."
         case .copyFailed(let message):
             return "Could not copy the selected file into the app workspace. \(message)"
+        case .outputWriteFailed(let message):
+            return "Could not save the MIDI file next to the selected audio file. \(message)"
         }
     }
 }
@@ -42,6 +45,31 @@ struct FileAccess {
             return destURL
         } catch {
             throw FileAccessError.copyFailed(error.localizedDescription)
+        }
+    }
+
+    static func saveOutput(_ workingOutputURL: URL, to finalOutputURL: URL, originalSourceURL: URL) throws {
+        let accessedSource = originalSourceURL.startAccessingSecurityScopedResource()
+        let outputFolderURL = finalOutputURL.deletingLastPathComponent()
+        let accessedOutputFolder = outputFolderURL.startAccessingSecurityScopedResource()
+
+        defer {
+            if accessedSource {
+                originalSourceURL.stopAccessingSecurityScopedResource()
+            }
+            if accessedOutputFolder {
+                outputFolderURL.stopAccessingSecurityScopedResource()
+            }
+        }
+
+        do {
+            if FileManager.default.fileExists(atPath: finalOutputURL.path) {
+                try FileManager.default.removeItem(at: finalOutputURL)
+            }
+
+            try FileManager.default.copyItem(at: workingOutputURL, to: finalOutputURL)
+        } catch {
+            throw FileAccessError.outputWriteFailed(error.localizedDescription)
         }
     }
 

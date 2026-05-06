@@ -13,6 +13,7 @@ Stages the Python backend into an already-built app bundle.
 
 Current implementation:
   - copies Backend/transkun_runner.py
+  - copies Backend/pc_separator_runner.py
   - copies the existing .venv into Contents/Resources/Backend/python
   - copies imageio-ffmpeg's ffmpeg binary into Contents/Resources/Backend/bin
   - writes preliminary license notes
@@ -100,6 +101,7 @@ rsync -aL \
   "$ROOT_DIR/.venv/" "$PYTHON_DIR/"
 
 install -m 755 "$ROOT_DIR/Backend/transkun_runner.py" "$BACKEND_DIR/transkun_runner.py"
+install -m 755 "$ROOT_DIR/Backend/pc_separator_runner.py" "$BACKEND_DIR/pc_separator_runner.py"
 
 FFMPEG_PATH="$("$ROOT_DIR/.venv/bin/python" - <<'PY'
 import imageio_ffmpeg

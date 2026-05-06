@@ -8,6 +8,7 @@ import UniformTypeIdentifiers
 final class AppModel {
     var status: TranscriptionStatus = .idle
     var selectedDevice: TranskunDevice = .cpu
+    var isPianoSeparationEnabled = false
     var logLines: [String] = []
     var isImporterPresented = false
     var isDropTargeted = false
@@ -64,6 +65,7 @@ final class AppModel {
         }
         let revealInFinder = environment["PIANO_TRANSCRIBE_AUTORUN_REVEAL"] != "0"
         let quitWhenFinished = environment["PIANO_TRANSCRIBE_AUTORUN_QUIT"] == "1"
+        isPianoSeparationEnabled = environment["PIANO_TRANSCRIBE_AUTORUN_PREPROCESSOR"] == "pc-separation"
 
         logLines.removeAll()
         status = .copyingInput
@@ -146,6 +148,7 @@ final class AppModel {
                 sourceURL: sourceURL,
                 finalOutputURL: outputURL,
                 device: selectedDevice,
+                preprocessor: selectedPreprocessor,
                 statusHandler: { [weak self] status in
                     Task { @MainActor in
                         self?.status = status
@@ -242,10 +245,24 @@ final class AppModel {
                 return "Python backend was not found. Run the backend setup before transcribing."
             case .runnerNotFound:
                 return "Transkun runner script was not found."
+            case .pianoSeparationBackendNotFound:
+                return "Piano/orchestra separation needs its separate backend. Run Packaging/build_pc_separation_dev.sh first."
+            case .pianoSeparationRunnerNotFound:
+                return "Piano/orchestra separation runner script was not found."
+            case .pianoSeparationRepositoryNotFound:
+                return "pc-separation checkout was not found. Run Packaging/build_pc_separation_dev.sh first."
             }
         }
 
         return error.localizedDescription
+    }
+
+    private var selectedPreprocessor: AudioPreprocessor {
+        if isPianoSeparationEnabled {
+            return PianoConcertoSeparationPreprocessor()
+        }
+
+        return NoOpPreprocessor()
     }
 
     private func writeAutomationResult(

@@ -26,6 +26,7 @@ OUTPUT_MID="$TMP_DIR/silence-transkun.mid"
 RESULT_JSON="$TMP_DIR/result-success.json"
 BAD_MIDI="$TMP_DIR/not-audio.mid"
 BAD_RESULT_JSON="$TMP_DIR/result-bad-input.json"
+SEPARATION_RESULT_JSON="$TMP_DIR/result-separation-missing.json"
 
 export INPUT_WAV BAD_MIDI
 ".venv/bin/python" - <<'PY'
@@ -52,15 +53,31 @@ launch_and_wait() {
   local input="$1"
   local output="$2"
   local result="$3"
+  local preprocessor="${4:-}"
 
-  rm -f "$output" "$result"
-  /usr/bin/open -n "$APP_BUNDLE" \
-    --env "PIANO_TRANSCRIBE_ROOT=$ROOT_DIR" \
-    --env "PIANO_TRANSCRIBE_AUTORUN_INPUT=$input" \
-    --env "PIANO_TRANSCRIBE_AUTORUN_OUTPUT=$output" \
-    --env "PIANO_TRANSCRIBE_AUTORUN_RESULT_FILE=$result" \
-    --env "PIANO_TRANSCRIBE_AUTORUN_REVEAL=0" \
+  if [[ -n "$output" ]]; then
+    rm -f "$output"
+  fi
+  rm -f "$result"
+
+  local open_args=(
+    -n "$APP_BUNDLE"
+    --env "PIANO_TRANSCRIBE_ROOT=$ROOT_DIR"
+    --env "PIANO_TRANSCRIBE_AUTORUN_INPUT=$input"
+    --env "PIANO_TRANSCRIBE_AUTORUN_RESULT_FILE=$result"
+    --env "PIANO_TRANSCRIBE_AUTORUN_REVEAL=0"
     --env "PIANO_TRANSCRIBE_AUTORUN_QUIT=1"
+  )
+
+  if [[ -n "$output" ]]; then
+    open_args+=(--env "PIANO_TRANSCRIBE_AUTORUN_OUTPUT=$output")
+  fi
+
+  if [[ -n "$preprocessor" ]]; then
+    open_args+=(--env "PIANO_TRANSCRIBE_AUTORUN_PREPROCESSOR=$preprocessor")
+  fi
+
+  /usr/bin/open "${open_args[@]}"
 
   for _ in {1..120}; do
     if [[ -f "$result" ]]; then
@@ -73,7 +90,7 @@ launch_and_wait() {
   return 1
 }
 
-launch_and_wait "$INPUT_WAV" "$OUTPUT_MID" "$RESULT_JSON"
+launch_and_wait "$INPUT_WAV" "" "$RESULT_JSON"
 ".venv/bin/python" - <<PY
 import json
 from pathlib import Path
@@ -81,6 +98,7 @@ from pathlib import Path
 result = json.loads(Path("$RESULT_JSON").read_text())
 assert result["status"] == "completed", result
 assert result["outputExists"] is True, result
+assert result["output"] == "$OUTPUT_MID", result
 assert Path("$OUTPUT_MID").stat().st_size > 0, result
 print("App E2E audio -> MIDI OK:", "$OUTPUT_MID")
 PY
@@ -94,4 +112,15 @@ result = json.loads(Path("$BAD_RESULT_JSON").read_text())
 assert result["status"] == "failed", result
 assert "MIDI files are not valid input" in result["message"], result
 print("App E2E MIDI rejection OK")
+PY
+
+launch_and_wait "$INPUT_WAV" "" "$SEPARATION_RESULT_JSON" "pc-separation"
+".venv/bin/python" - <<PY
+import json
+from pathlib import Path
+
+result = json.loads(Path("$SEPARATION_RESULT_JSON").read_text())
+assert result["status"] == "failed", result
+assert "separation needs its separate backend" in result["message"], result
+print("App E2E separation setup error OK")
 PY
