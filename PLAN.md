@@ -27,9 +27,9 @@ Current open work:
 GitHub tracking:
 
 - https://github.com/FilipJaskovic/piano-transcribe/issues/1 - Bundle vetted ffmpeg and license notices.
-- https://github.com/FilipJaskovic/piano-transcribe/issues/2 - Configure Developer ID signing and notarization.
+- https://github.com/FilipJaskovic/piano-transcribe/issues/2 - Keep pc-separation as a future isolated preprocessor.
 - https://github.com/FilipJaskovic/piano-transcribe/issues/3 - Bundle standalone Python 3.12 backend.
-- https://github.com/FilipJaskovic/piano-transcribe/issues/4 - Keep pc-separation as a future isolated preprocessor.
+- https://github.com/FilipJaskovic/piano-transcribe/issues/4 - Configure Developer ID signing and notarization.
 
 ## Implementation Log
 
