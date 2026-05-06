@@ -6,7 +6,7 @@ This file is the persistent build plan for Piano transcribe, a native macOS wrap
 
 ## Progress Tracker
 
-Current status: Developer MVP is scaffolded. Backend WAV/MP3 smoke tests pass on CPU, and the SwiftUI app builds and launches. Manual UI end-to-end transcription is still pending.
+Current status: Developer MVP is scaffolded. Backend WAV/MP3 smoke tests pass on CPU, the SwiftUI app builds and launches, and the private GitHub repository has a passing macOS 26 build workflow that uploads a developer DMG artifact. Manual UI end-to-end transcription is still pending.
 
 | Milestone | Status | Notes |
 | --- | --- | --- |
@@ -61,6 +61,14 @@ Current status: Developer MVP is scaffolded. Backend WAV/MP3 smoke tests pass on
   - `Packaging/README.md`
 - The GitHub workflow uses the official `macos-26` GitHub-hosted runner label so CI has macOS 26/Xcode 26 tooling.
 - Local DMG packaging attempt reached the Release app build, then stopped while staging the backend because this Mac only had about 172 MiB free. The script now preflights free space and recommends building the artifact in GitHub Actions or freeing local disk space.
+- Created private GitHub repository: `FilipJaskovic/piano-transcribe`.
+- Pushed branch `main` to GitHub.
+- First GitHub Actions run passed:
+  - Run ID: `25455656801`
+  - Backend smoke test: passed.
+  - Release app build: passed.
+  - Developer DMG package: passed.
+  - DMG artifact upload: passed.
 
 ## 1. MVP Product Definition
 
