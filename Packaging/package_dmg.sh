@@ -63,6 +63,7 @@ xcodebuild \
   CODE_SIGN_STYLE=Manual \
   CODE_SIGN_IDENTITY="${SIGN_IDENTITY:--}" \
   DEVELOPMENT_TEAM="${DEVELOPMENT_TEAM:-}" \
+  CODE_SIGN_INJECT_BASE_ENTITLEMENTS=NO \
   build
 
 backend_args=(--app "$APP_BUNDLE")

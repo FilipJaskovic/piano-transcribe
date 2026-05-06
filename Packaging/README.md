@@ -15,6 +15,20 @@ The developer DMG is useful for validating the app bundle shape, but it is not a
 final redistributable release because the staged Python runtime may still depend
 on machine-local framework paths.
 
+## Backend Health Check
+
+Use the doctor before spending time on packaging:
+
+```bash
+. .venv/bin/activate
+python Backend/doctor.py
+python Backend/smoke_test.py
+./script/app_e2e.sh
+```
+
+`doctor.py` verifies Python 3.12, imports `torch` and `transkun`, reports MPS
+availability, and detects broken `ffmpeg`/`ffprobe` binaries.
+
 ## Public Release Requirements
 
 Before public release:
@@ -33,6 +47,12 @@ Set the signing identity before packaging:
 ```bash
 export SIGN_IDENTITY="Developer ID Application: YOUR NAME (TEAMID)"
 export DEVELOPMENT_TEAM="TEAMID"
+```
+
+Check an app bundle before distribution:
+
+```bash
+./Packaging/check_release_readiness.sh "build/DerivedData/Build/Products/Release/Piano transcribe.app"
 ```
 
 ## Notarization

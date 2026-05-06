@@ -5,7 +5,7 @@ MODE="${1:-run}"
 APP_NAME="Piano transcribe"
 SCHEME="PianoTranscribe"
 PROJECT="PianoTranscribe.xcodeproj"
-BUNDLE_ID="com.yourcompany.PianoTranscribe"
+BUNDLE_ID="com.filipjaskovic.PianoTranscribe"
 CONFIGURATION="${CONFIGURATION:-Debug}"
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"

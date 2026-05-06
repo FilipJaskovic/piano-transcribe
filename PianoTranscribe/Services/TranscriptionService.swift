@@ -76,8 +76,10 @@ final class TranscriptionService: @unchecked Sendable {
         device: TranskunDevice,
         logHandler: @escaping @Sendable (String) -> Void
     ) async throws -> String {
-        try await withTaskCancellationHandler {
-            try await withCheckedThrowingContinuation { continuation in
+        let cancellationRequested = LockedFlag()
+
+        return try await withTaskCancellationHandler {
+            try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<String, Error>) in
                 let process = Process()
                 setCurrentProcess(process)
 
@@ -128,7 +130,9 @@ final class TranscriptionService: @unchecked Sendable {
                     self?.clearCurrentProcess(process)
                     let output = collected.value
 
-                    if process.terminationStatus == 0 {
+                    if cancellationRequested.value {
+                        continuation.resume(throwing: CancellationError())
+                    } else if process.terminationStatus == 0 {
                         continuation.resume(returning: output)
                     } else {
                         continuation.resume(
@@ -148,6 +152,7 @@ final class TranscriptionService: @unchecked Sendable {
                 }
             }
         } onCancel: {
+            cancellationRequested.setTrue()
             cancel()
         }
     }

@@ -17,5 +17,6 @@ fi
 python -m pip install --upgrade pip setuptools wheel
 python -m pip install -r Backend/requirements-transkun.lock
 
+python Backend/doctor.py
 python Backend/smoke_test.py
 echo "Backend ready."

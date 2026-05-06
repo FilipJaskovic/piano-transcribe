@@ -6,15 +6,30 @@ This file is the persistent build plan for Piano transcribe, a native macOS wrap
 
 ## Progress Tracker
 
-Current status: Developer MVP is scaffolded. Backend WAV/MP3 smoke tests pass on CPU, the SwiftUI app builds and launches, and the private GitHub repository has a passing macOS 26 build workflow that uploads a developer DMG artifact. Manual UI end-to-end transcription is still pending.
+Current status: Developer MVP is implemented and verified. Backend WAV/MP3 smoke tests pass on CPU, the SwiftUI app builds and launches, automated app E2E audio -> MIDI passes, `.mid` input rejection passes, and the private GitHub repository has a macOS 26 workflow for backend smoke testing, app E2E testing, Release building, DMG packaging, and artifact upload.
 
 | Milestone | Status | Notes |
 | --- | --- | --- |
 | 1. Terminal proof of concept | Complete | Python 3.12 venv created. WAV and MP3 audio -> MIDI smoke tests pass on CPU. |
 | 2. SwiftUI shell | Complete | Main window, drop zone, file importer, device picker, status, logs, settings, and cancel command are implemented. |
-| 3. Swift-to-Python integration | Implemented, needs UI E2E check | `TranscriptionService` invokes Python with `Process`, captures stdout/stderr, and copies `output.mid` to the final location. |
-| 4. Release backend packaging | Started | Added scripts and GitHub Actions workflow for Release build, backend staging, signing, DMG creation, artifact upload, and tag releases. Full standalone Python bundling still pending. |
-| 5. Signing and notarization | Started | Added signing and notarization scripts. Real notarization still needs Developer ID identity and Apple credentials. |
+| 3. Swift-to-Python integration | Complete | `TranscriptionService` invokes Python with `Process`, captures stdout/stderr, copies `output.mid`, and `script/app_e2e.sh` verifies real app audio -> MIDI plus `.mid` rejection. |
+| 4. Release backend packaging | Started | Added scripts and GitHub Actions workflow for Release build, backend staging, signing, DMG creation, artifact upload, and tag releases. Full standalone Python/ffmpeg bundling and license collection are still pending. |
+| 5. Signing and notarization | Started | Added signing, entitlement, readiness, and notarization scripts. Current Release app has hardened runtime and empty entitlements, but real notarization still needs Developer ID identity and Apple credentials. |
+| Future separation pre-step | Placeholder complete | `AudioPreprocessor`, `NoOpPreprocessor`, and `PianoConcertoSeparationPreprocessor` are present; pc-separation is intentionally not bundled into the Transkun environment. |
+
+Current open work:
+
+- Build a true standalone release backend that does not depend on `.venv`, system Python, or Homebrew.
+- Bundle vetted LGPL-compatible `ffmpeg`/`ffprobe` and include license notices.
+- Configure Developer ID signing identity and Apple notarization credentials in GitHub Actions secrets.
+- Create a tag release after the above release prerequisites are satisfied.
+
+GitHub tracking:
+
+- https://github.com/FilipJaskovic/piano-transcribe/issues/1 - Bundle vetted ffmpeg and license notices.
+- https://github.com/FilipJaskovic/piano-transcribe/issues/2 - Configure Developer ID signing and notarization.
+- https://github.com/FilipJaskovic/piano-transcribe/issues/3 - Bundle standalone Python 3.12 backend.
+- https://github.com/FilipJaskovic/piano-transcribe/issues/4 - Keep pc-separation as a future isolated preprocessor.
 
 ## Implementation Log
 
@@ -69,6 +84,25 @@ Current status: Developer MVP is scaffolded. Backend WAV/MP3 smoke tests pass on
   - Release app build: passed.
   - Developer DMG package: passed.
   - DMG artifact upload: passed.
+- Added backend health diagnostics:
+  - `Backend/doctor.py` verifies Python 3.12, Torch, Transkun, MPS availability, and `ffmpeg`/`ffprobe` state.
+  - `Packaging/build_backend_dev.sh` now runs the doctor before the smoke test.
+- Added automated app E2E verification:
+  - `script/app_e2e.sh` builds the app, launches the real `.app`, sends an autorun audio job through environment variables, verifies a non-empty MIDI output, then verifies `.mid` input rejection.
+  - `AppModel.runStartupAutomationIfNeeded()` supports this test without changing the normal user-facing UI.
+- Hardened UI/end-to-end error handling:
+  - Subprocess failures show a concise user-facing status and keep backend details in the collapsible Details log.
+  - Cancellation is treated as cancellation instead of a generic subprocess failure.
+- Tightened release signing settings:
+  - Bundle identifier is now `com.filipjaskovic.PianoTranscribe`.
+  - Release builds disable injected base entitlements.
+  - `Packaging/entitlements.plist` is an empty entitlement set for the initial non-sandboxed Developer ID build.
+  - `Packaging/check_release_readiness.sh` reports bundle ID, minimum macOS, signing state, entitlements, backend staging, and notarization credential readiness.
+- Re-verified locally:
+  - `.venv/bin/python Backend/doctor.py`: passed.
+  - `./script/app_e2e.sh`: passed.
+  - Release `xcodebuild`: passed.
+  - `./Packaging/check_release_readiness.sh "build/DerivedData/Build/Products/Release/Piano transcribe.app"`: valid ad-hoc signed Release app with hardened runtime and empty entitlements; distribution still blocked by missing Developer ID identity, missing notarization credentials, and no staged standalone backend in the local build.
 
 ## 1. MVP Product Definition
 
@@ -134,7 +168,7 @@ Recommended Xcode settings:
 
 ```text
 Product Name: Piano transcribe
-Bundle Identifier: com.yourcompany.PianoTranscribe
+Bundle Identifier: com.filipjaskovic.PianoTranscribe
 Deployment Target: macOS 26.0
 Swift Language Version: Swift 6
 Signing: Developer ID for outside-App-Store distribution initially

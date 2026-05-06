@@ -11,6 +11,9 @@ on:
 permissions:
   contents: write
 
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
+
 jobs:
   build-macos:
     name: macOS 26 build
@@ -33,6 +36,9 @@ jobs:
 
       - name: Build and smoke-test backend
         run: ./Packaging/build_backend_dev.sh
+
+      - name: Run app E2E smoke test
+        run: ./script/app_e2e.sh
 
       - name: Build app and package developer DMG
         run: ./Packaging/package_dmg.sh --dev-venv-ok --skip-notarize

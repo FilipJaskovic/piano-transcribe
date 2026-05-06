@@ -3,6 +3,8 @@ set -euo pipefail
 
 APP_BUNDLE="${1:-}"
 SIGN_IDENTITY="${SIGN_IDENTITY:--}"
+ROOT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
+ENTITLEMENTS="$ROOT_DIR/Packaging/entitlements.plist"
 
 if [[ -z "$APP_BUNDLE" || ! -d "$APP_BUNDLE" ]]; then
   echo "usage: $0 <Piano transcribe.app>" >&2
@@ -23,5 +25,5 @@ if [[ -d "$BACKEND_DIR" ]]; then
   done < <(find "$BACKEND_DIR" -type f -print0)
 fi
 
-codesign "${sign_args[@]}" --deep "$APP_BUNDLE"
+codesign "${sign_args[@]}" --entitlements "$ENTITLEMENTS" --deep "$APP_BUNDLE"
 codesign --verify --deep --strict --verbose=2 "$APP_BUNDLE"

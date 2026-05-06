@@ -22,3 +22,18 @@ final class LockedString: @unchecked Sendable {
         lock.withLocking { storage }
     }
 }
+
+final class LockedFlag: @unchecked Sendable {
+    private let lock = NSLock()
+    private var storage = false
+
+    func setTrue() {
+        lock.withLocking {
+            storage = true
+        }
+    }
+
+    var value: Bool {
+        lock.withLocking { storage }
+    }
+}

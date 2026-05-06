@@ -15,6 +15,7 @@ final class AppModel {
 
     private let transcriptionService = TranscriptionService()
     private var transcriptionTask: Task<Void, Never>?
+    private var startupAutomationHandled = false
 
     var canCancel: Bool {
         status.isInProgress
@@ -34,7 +35,47 @@ final class AppModel {
         status = .copyingInput
 
         transcriptionTask = Task { [weak self] in
-            await self?.runTranscription(sourceURL: sourceURL)
+            await self?.runTranscription(
+                sourceURL: sourceURL,
+                finalOutputURL: nil,
+                revealInFinder: true,
+                automationResultURL: nil,
+                quitWhenFinished: false
+            )
+        }
+    }
+
+    func runStartupAutomationIfNeeded() {
+        guard !startupAutomationHandled else { return }
+
+        let environment = ProcessInfo.processInfo.environment
+        guard let inputPath = environment["PIANO_TRANSCRIBE_AUTORUN_INPUT"], !inputPath.isEmpty else {
+            return
+        }
+
+        startupAutomationHandled = true
+
+        let inputURL = URL(fileURLWithPath: inputPath)
+        let outputURL = environment["PIANO_TRANSCRIBE_AUTORUN_OUTPUT"].flatMap {
+            $0.isEmpty ? nil : URL(fileURLWithPath: $0)
+        }
+        let resultURL = environment["PIANO_TRANSCRIBE_AUTORUN_RESULT_FILE"].flatMap {
+            $0.isEmpty ? nil : URL(fileURLWithPath: $0)
+        }
+        let revealInFinder = environment["PIANO_TRANSCRIBE_AUTORUN_REVEAL"] != "0"
+        let quitWhenFinished = environment["PIANO_TRANSCRIBE_AUTORUN_QUIT"] == "1"
+
+        logLines.removeAll()
+        status = .copyingInput
+
+        transcriptionTask = Task { [weak self] in
+            await self?.runTranscription(
+                sourceURL: inputURL,
+                finalOutputURL: outputURL,
+                revealInFinder: revealInFinder,
+                automationResultURL: resultURL,
+                quitWhenFinished: quitWhenFinished
+            )
         }
     }
 
@@ -89,9 +130,18 @@ final class AppModel {
         return true
     }
 
-    private func runTranscription(sourceURL: URL) async {
+    private func runTranscription(
+        sourceURL: URL,
+        finalOutputURL: URL?,
+        revealInFinder: Bool,
+        automationResultURL: URL?,
+        quitWhenFinished: Bool
+    ) async {
+        var resolvedOutputURL: URL?
+
         do {
-            let outputURL = try Self.defaultOutputURL(for: sourceURL)
+            let outputURL = try finalOutputURL ?? Self.defaultOutputURL(for: sourceURL)
+            resolvedOutputURL = outputURL
             let result = try await transcriptionService.transcribe(
                 sourceURL: sourceURL,
                 finalOutputURL: outputURL,
@@ -109,12 +159,41 @@ final class AppModel {
             )
 
             status = .completed(result)
-            NSWorkspace.shared.activateFileViewerSelecting([result])
+            writeAutomationResult(
+                status: "completed",
+                sourceURL: sourceURL,
+                outputURL: result,
+                message: nil,
+                resultURL: automationResultURL
+            )
+
+            if revealInFinder {
+                NSWorkspace.shared.activateFileViewerSelecting([result])
+            }
         } catch is CancellationError {
             status = .cancelled
+            writeAutomationResult(
+                status: "cancelled",
+                sourceURL: sourceURL,
+                outputURL: resolvedOutputURL,
+                message: "Cancelled",
+                resultURL: automationResultURL
+            )
         } catch {
-            status = .failed(error.localizedDescription)
+            let message = userFacingMessage(for: error)
+            status = .failed(message)
             appendLog(error.localizedDescription)
+            writeAutomationResult(
+                status: "failed",
+                sourceURL: sourceURL,
+                outputURL: resolvedOutputURL,
+                message: message,
+                resultURL: automationResultURL
+            )
+        }
+
+        if quitWhenFinished {
+            NSApp.terminate(nil)
         }
     }
 
@@ -145,5 +224,63 @@ final class AppModel {
         let base = inputURL.deletingPathExtension().lastPathComponent
         let folder = inputURL.deletingLastPathComponent()
         return folder.appendingPathComponent("\(base)-transkun.mid")
+    }
+
+    private func userFacingMessage(for error: Error) -> String {
+        if let serviceError = error as? TranscriptionServiceError {
+            switch serviceError {
+            case .processFailed:
+                return "Transkun failed. Open Details for backend output."
+            case .outputMissing:
+                return serviceError.localizedDescription
+            }
+        }
+
+        if let backendError = error as? PythonBackendError {
+            switch backendError {
+            case .backendNotFound:
+                return "Python backend was not found. Run the backend setup before transcribing."
+            case .runnerNotFound:
+                return "Transkun runner script was not found."
+            }
+        }
+
+        return error.localizedDescription
+    }
+
+    private func writeAutomationResult(
+        status: String,
+        sourceURL: URL,
+        outputURL: URL?,
+        message: String?,
+        resultURL: URL?
+    ) {
+        guard let resultURL else { return }
+
+        var payload: [String: Any] = [
+            "status": status,
+            "input": sourceURL.path,
+            "logs": logLines
+        ]
+
+        if let outputURL {
+            payload["output"] = outputURL.path
+            payload["outputExists"] = FileManager.default.fileExists(atPath: outputURL.path)
+        }
+
+        if let message {
+            payload["message"] = message
+        }
+
+        do {
+            try FileManager.default.createDirectory(
+                at: resultURL.deletingLastPathComponent(),
+                withIntermediateDirectories: true
+            )
+            let data = try JSONSerialization.data(withJSONObject: payload, options: [.prettyPrinted, .sortedKeys])
+            try data.write(to: resultURL, options: .atomic)
+        } catch {
+            appendLog("Could not write automation result: \(error.localizedDescription)")
+        }
     }
 }

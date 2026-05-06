@@ -29,6 +29,9 @@ struct ContentView: View {
             allowsMultipleSelection: false,
             onCompletion: model.handleImporterResult(_:)
         )
+        .task {
+            model.runStartupAutomationIfNeeded()
+        }
     }
 
     private var header: some View {
