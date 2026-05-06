@@ -9,6 +9,11 @@ final class AppModel {
     var status: TranscriptionStatus = .idle
     var selectedDevice: TranskunDevice = .cpu
     var isPianoSeparationEnabled = false
+    var shouldSaveSeparatedStems = true {
+        didSet {
+            UserDefaults.standard.set(shouldSaveSeparatedStems, forKey: SettingsKeys.shouldSaveSeparatedStems)
+        }
+    }
     var outputDestinationMode: OutputDestinationMode = .sourceFolder {
         didSet {
             UserDefaults.standard.set(outputDestinationMode.rawValue, forKey: SettingsKeys.outputDestinationMode)
@@ -45,6 +50,10 @@ final class AppModel {
 
         if let path = defaults.string(forKey: SettingsKeys.customOutputFolderPath), !path.isEmpty {
             customOutputFolderURL = URL(fileURLWithPath: path, isDirectory: true)
+        }
+
+        if defaults.object(forKey: SettingsKeys.shouldSaveSeparatedStems) != nil {
+            shouldSaveSeparatedStems = defaults.bool(forKey: SettingsKeys.shouldSaveSeparatedStems)
         }
 
         refreshPianoSeparationAvailability()
@@ -135,6 +144,9 @@ final class AppModel {
         let revealInFinder = environment["PIANO_TRANSCRIBE_AUTORUN_REVEAL"] != "0"
         let quitWhenFinished = environment["PIANO_TRANSCRIBE_AUTORUN_QUIT"] == "1"
         isPianoSeparationEnabled = environment["PIANO_TRANSCRIBE_AUTORUN_PREPROCESSOR"] == "pc-separation"
+        if let saveStems = environment["PIANO_TRANSCRIBE_AUTORUN_SAVE_STEMS"] {
+            shouldSaveSeparatedStems = saveStems != "0"
+        }
 
         if environment["PIANO_TRANSCRIBE_AUTORUN_OUTPUT_DESTINATION"] == "source-folder" {
             outputDestinationMode = .sourceFolder
@@ -235,6 +247,7 @@ final class AppModel {
                 finalOutputURL: outputURL,
                 device: selectedDevice,
                 preprocessor: selectedPreprocessor,
+                saveSeparatedStems: isPianoSeparationEnabled && shouldSaveSeparatedStems,
                 statusHandler: { [weak self] status in
                     Task { @MainActor in
                         self?.status = status
@@ -247,17 +260,18 @@ final class AppModel {
                 }
             )
 
-            status = .completed(result)
+            status = .completed(result.midiURL)
             writeAutomationResult(
                 status: "completed",
                 sourceURL: sourceURL,
-                outputURL: result,
+                outputURL: result.midiURL,
+                stemOutputURLs: result.savedStemURLs,
                 message: nil,
                 resultURL: automationResultURL
             )
 
             if revealInFinder {
-                NSWorkspace.shared.activateFileViewerSelecting([result])
+                NSWorkspace.shared.activateFileViewerSelecting([result.midiURL] + result.savedStemURLs)
             }
         } catch is CancellationError {
             status = .cancelled
@@ -353,7 +367,7 @@ final class AppModel {
             switch preprocessorError {
             case .processFailed:
                 return "Piano/orchestra separation failed. Open Details for backend output."
-            case .outputMissing:
+            case .outputMissing, .stemOutputMissing:
                 return preprocessorError.localizedDescription
             }
         }
@@ -379,6 +393,7 @@ final class AppModel {
     private enum SettingsKeys {
         static let outputDestinationMode = "outputDestinationMode"
         static let customOutputFolderPath = "customOutputFolderPath"
+        static let shouldSaveSeparatedStems = "shouldSaveSeparatedStems"
     }
 
     private var selectedPreprocessor: AudioPreprocessor {
@@ -393,6 +408,7 @@ final class AppModel {
         status: String,
         sourceURL: URL,
         outputURL: URL?,
+        stemOutputURLs: [URL] = [],
         message: String?,
         resultURL: URL?
     ) {
@@ -407,6 +423,15 @@ final class AppModel {
         if let outputURL {
             payload["output"] = outputURL.path
             payload["outputExists"] = FileManager.default.fileExists(atPath: outputURL.path)
+        }
+
+        if !stemOutputURLs.isEmpty {
+            payload["stemOutputs"] = stemOutputURLs.map(\.path)
+            payload["stemOutputExists"] = stemOutputURLs.allSatisfy { url in
+                var isDirectory: ObjCBool = false
+                return FileManager.default.fileExists(atPath: url.path, isDirectory: &isDirectory)
+                    && !isDirectory.boolValue
+            }
         }
 
         if let message {

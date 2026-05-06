@@ -33,6 +33,7 @@ def main() -> int:
         tmp = Path(tmp_dir)
         wav = tmp / "silence.wav"
         out = tmp / "piano-separated.wav"
+        orchestra = tmp / "orchestra-separated.wav"
 
         write_silent_wav(wav)
 
@@ -43,6 +44,8 @@ def main() -> int:
             str(wav),
             "--output",
             str(out),
+            "--orchestra-output",
+            str(orchestra),
             "--repo",
             str(repo),
             "--model",
@@ -53,9 +56,12 @@ def main() -> int:
         subprocess.run(cmd, check=True)
 
         if not out.exists() or out.stat().st_size == 0:
-            raise RuntimeError("pc-separation smoke test did not produce a WAV file.")
+            raise RuntimeError("pc-separation smoke test did not produce a piano WAV file.")
 
-        print("pc-separation smoke test OK:", out)
+        if not orchestra.exists() or orchestra.stat().st_size == 0:
+            raise RuntimeError("pc-separation smoke test did not produce an orchestra WAV file.")
+
+        print("pc-separation smoke test OK:", out, orchestra)
         return 0
 
 

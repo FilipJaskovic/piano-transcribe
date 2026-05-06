@@ -18,6 +18,13 @@ struct SettingsView: View {
                 Text(model.isPianoSeparationAvailable ? "Uses the bundled HDMC pc-separation model." : model.pianoSeparationAvailabilityMessage)
                     .font(.caption)
                     .foregroundStyle(.secondary)
+
+                Toggle("Save separated WAV stems", isOn: $model.shouldSaveSeparatedStems)
+                    .disabled(!model.isPianoSeparationAvailable || !model.isPianoSeparationEnabled)
+
+                Text("When separation is enabled, saves piano and orchestra WAV files beside the MIDI.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
             }
 
             Section("Output") {

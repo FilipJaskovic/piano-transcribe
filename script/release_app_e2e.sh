@@ -15,6 +15,8 @@ trap 'pkill -x "$APP_PROCESS" >/dev/null 2>&1 || true; rm -rf "$TMP_DIR"' EXIT
 
 INPUT_WAV="$TMP_DIR/silence.wav"
 OUTPUT_MID="$TMP_DIR/silence-transkun.mid"
+PIANO_STEM="$TMP_DIR/silence-piano-separated.wav"
+ORCHESTRA_STEM="$TMP_DIR/silence-orchestra-separated.wav"
 RESULT_JSON="$TMP_DIR/result-release.json"
 
 export INPUT_WAV
@@ -34,7 +36,7 @@ with wave.open(str(path), "w") as wav:
 PY
 
 pkill -x "$APP_PROCESS" >/dev/null 2>&1 || true
-rm -f "$OUTPUT_MID" "$RESULT_JSON"
+rm -f "$OUTPUT_MID" "$PIANO_STEM" "$ORCHESTRA_STEM" "$RESULT_JSON"
 
 /usr/bin/open \
   -n "$APP_BUNDLE" \
@@ -42,6 +44,7 @@ rm -f "$OUTPUT_MID" "$RESULT_JSON"
   --env "PIANO_TRANSCRIBE_AUTORUN_RESULT_FILE=$RESULT_JSON" \
   --env "PIANO_TRANSCRIBE_AUTORUN_OUTPUT_DESTINATION=source-folder" \
   --env "PIANO_TRANSCRIBE_AUTORUN_PREPROCESSOR=pc-separation" \
+  --env "PIANO_TRANSCRIBE_AUTORUN_SAVE_STEMS=1" \
   --env "PIANO_TRANSCRIBE_AUTORUN_REVEAL=0" \
   --env "PIANO_TRANSCRIBE_AUTORUN_QUIT=1"
 
@@ -66,5 +69,9 @@ assert result["status"] == "completed", result
 assert result["outputExists"] is True, result
 assert result["output"] == "$OUTPUT_MID", result
 assert Path("$OUTPUT_MID").stat().st_size > 0, result
+assert result["stemOutputExists"] is True, result
+assert result["stemOutputs"] == ["$PIANO_STEM", "$ORCHESTRA_STEM"], result
+assert Path("$PIANO_STEM").stat().st_size > 0, result
+assert Path("$ORCHESTRA_STEM").stat().st_size > 0, result
 print("Release app E2E bundled separation OK:", "$OUTPUT_MID")
 PY

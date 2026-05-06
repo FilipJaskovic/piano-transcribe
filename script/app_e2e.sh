@@ -23,6 +23,8 @@ trap 'pkill -x "$APP_PROCESS" >/dev/null 2>&1 || true; rm -rf "$TMP_DIR"' EXIT
 
 INPUT_WAV="$TMP_DIR/silence.wav"
 OUTPUT_MID="$TMP_DIR/silence-transkun.mid"
+PIANO_STEM="$TMP_DIR/silence-piano-separated.wav"
+ORCHESTRA_STEM="$TMP_DIR/silence-orchestra-separated.wav"
 RESULT_JSON="$TMP_DIR/result-success.json"
 CUSTOM_OUTPUT_DIR="$TMP_DIR/custom-output"
 CUSTOM_OUTPUT_MID="$CUSTOM_OUTPUT_DIR/silence-transkun.mid"
@@ -86,6 +88,7 @@ launch_and_wait() {
 
   if [[ -n "$preprocessor" ]]; then
     open_args+=(--env "PIANO_TRANSCRIBE_AUTORUN_PREPROCESSOR=$preprocessor")
+    open_args+=(--env "PIANO_TRANSCRIBE_AUTORUN_SAVE_STEMS=1")
   fi
 
   if [[ -n "${PIANO_TRANSCRIBE_PC_SEPARATION_ROOT:-}" ]]; then
@@ -151,6 +154,7 @@ print("App E2E MIDI rejection OK")
 PY
 
 if [[ "${PIANO_TRANSCRIBE_TEST_SEPARATOR:-0}" == "1" ]]; then
+  rm -f "$PIANO_STEM" "$ORCHESTRA_STEM"
   launch_and_wait "$INPUT_WAV" "$OUTPUT_MID" "$SEPARATION_RESULT_JSON" "pc-separation"
   ".venv/bin/python" - <<PY
 import json
@@ -161,6 +165,10 @@ assert result["status"] == "completed", result
 assert result["outputExists"] is True, result
 assert result["output"] == "$OUTPUT_MID", result
 assert Path("$OUTPUT_MID").stat().st_size > 0, result
+assert result["stemOutputExists"] is True, result
+assert result["stemOutputs"] == ["$PIANO_STEM", "$ORCHESTRA_STEM"], result
+assert Path("$PIANO_STEM").stat().st_size > 0, result
+assert Path("$ORCHESTRA_STEM").stat().st_size > 0, result
 print("App E2E bundled separation OK:", "$OUTPUT_MID")
 PY
 else

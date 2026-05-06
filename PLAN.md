@@ -6,7 +6,7 @@ This file is the persistent build plan for Piano transcribe, a native macOS wrap
 
 ## Progress Tracker
 
-Current status: Developer MVP is implemented and verified. Backend WAV/MP3 smoke tests pass on CPU, the SwiftUI app builds and launches, automated app E2E audio -> MIDI passes, `.mid` input rejection passes, configurable MIDI output destination passes, bundled HDMC piano/orchestra separation uses chunked inference and passes locally, and the private GitHub repository has a macOS 26 workflow for backend smoke testing, app E2E testing, Release building, DMG packaging, release-app E2E, and artifact upload.
+Current status: Developer MVP is implemented and verified. Backend WAV/MP3 smoke tests pass on CPU, the SwiftUI app builds and launches, automated app E2E audio -> MIDI passes, `.mid` input rejection passes, configurable MIDI output destination passes, bundled HDMC piano/orchestra separation uses chunked inference, the app can save separated piano/orchestra WAV stems beside the MIDI, and the private GitHub repository has a macOS 26 workflow for backend smoke testing, app E2E testing, Release building, DMG packaging, release-app E2E, and artifact upload.
 
 | Milestone | Status | Notes |
 | --- | --- | --- |
@@ -35,6 +35,10 @@ GitHub tracking:
 
 ### 2026-05-07
 
+- Added separated stem output saving.
+- `Backend/pc_separator_runner.py` now accepts `--orchestra-output` and writes both `piano-separated.wav` and `orchestra-separated.wav` from the HDMC estimates.
+- The Swift pipeline carries separated stem URLs through preprocessing, saves `<input-name>-piano-separated.wav` and `<input-name>-orchestra-separated.wav` into the selected MIDI output folder when enabled, and exposes a Settings toggle for stem saving.
+- App and release E2E scripts now verify that bundled separation produces non-empty MIDI, piano stem, and orchestra stem files.
 - Fixed long-track HDMC separator failures where the subprocess could be killed with exit code 9 during full-track inference.
 - `Backend/pc_separator_runner.py` now invokes the upstream Demucs `apply_model(..., split=True)` path, honoring the model config's split, overlap, and shifts settings while forcing single-worker chunk execution to reduce memory pressure.
 - Separator progress JSON now reports split settings and input duration.

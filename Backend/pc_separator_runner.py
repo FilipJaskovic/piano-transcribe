@@ -162,6 +162,7 @@ def cfg_value(root, dotted_key: str, default):
 def separate(
     input_path: Path,
     output_path: Path,
+    orchestra_output_path: Path | None,
     repo: Path,
     model: str,
     device: str,
@@ -253,6 +254,19 @@ def separate(
     output_path.parent.mkdir(parents=True, exist_ok=True)
     emit("writing_piano_stem", output=str(output_path))
     save_audio(output_path, piano, sample_rate)
+
+    if orchestra_output_path is not None:
+        if "orch" not in estimates:
+            return fail("pc-separation did not return an orchestra estimate.")
+
+        orchestra = estimates["orch"].detach().cpu()
+        if orchestra.ndim == 3:
+            orchestra = orchestra.squeeze(0)
+
+        orchestra_output_path.parent.mkdir(parents=True, exist_ok=True)
+        emit("writing_orchestra_stem", output=str(orchestra_output_path))
+        save_audio(orchestra_output_path, orchestra, sample_rate)
+
     emit("done", output=str(output_path))
 
     return 0
@@ -262,6 +276,7 @@ def main() -> int:
     parser = argparse.ArgumentParser(description="Piano transcribe pc-separation runner")
     parser.add_argument("--input", help="Input concerto audio file")
     parser.add_argument("--output", help="Output piano stem WAV")
+    parser.add_argument("--orchestra-output", help="Optional output orchestra stem WAV")
     parser.add_argument("--repo", default=os.environ.get("PIANO_TRANSCRIBE_PC_SEPARATION_ROOT"))
     parser.add_argument("--model", default="HDMC", choices=["UMX06", "UMX20", "SPL", "DMC", "HDMC"])
     parser.add_argument("--device", default="cpu", choices=["cpu", "cuda"])
@@ -287,6 +302,7 @@ def main() -> int:
         return separate(
             input_path=Path(args.input).resolve(),
             output_path=Path(args.output).resolve(),
+            orchestra_output_path=Path(args.orchestra_output).resolve() if args.orchestra_output else None,
             repo=repo,
             model=args.model,
             device=args.device,

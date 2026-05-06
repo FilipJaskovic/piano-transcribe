@@ -15,7 +15,7 @@ enum FileAccessError: LocalizedError {
         case .copyFailed(let message):
             return "Could not copy the selected file into the app workspace. \(message)"
         case .outputWriteFailed(let message):
-            return "Could not save the MIDI file to the selected output location. \(message)"
+            return "Could not save the output file to the selected output location. \(message)"
         }
     }
 }

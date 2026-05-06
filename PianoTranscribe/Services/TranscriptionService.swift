@@ -14,6 +14,11 @@ enum TranscriptionServiceError: LocalizedError {
     }
 }
 
+struct TranscriptionResult: Sendable {
+    let midiURL: URL
+    let savedStemURLs: [URL]
+}
+
 final class TranscriptionService: @unchecked Sendable {
     private let processLock = NSLock()
     private var currentProcess: Process?
@@ -29,9 +34,10 @@ final class TranscriptionService: @unchecked Sendable {
         finalOutputURL: URL,
         device: TranskunDevice,
         preprocessor: AudioPreprocessor,
+        saveSeparatedStems: Bool,
         statusHandler: @escaping @Sendable (TranscriptionStatus) -> Void,
         logHandler: @escaping @Sendable (String) -> Void
-    ) async throws -> URL {
+    ) async throws -> TranscriptionResult {
         statusHandler(.preparingBackend)
         let backend = try PythonBackendManager.resolveBackend()
 
@@ -44,12 +50,13 @@ final class TranscriptionService: @unchecked Sendable {
             statusHandler(.separatingPiano)
         }
 
-        let processedInput = try await preprocessor.process(
+        let preprocessingResult = try await preprocessor.process(
             inputURL: workingInput,
             jobDirectory: jobDir,
             logHandler: logHandler,
             processRunner: runProcess
         )
+        let processedInput = preprocessingResult.transcriptionInputURL
         let workingOutput = jobDir.appendingPathComponent("output.mid")
 
         statusHandler(.transcribing)
@@ -80,7 +87,32 @@ final class TranscriptionService: @unchecked Sendable {
         statusHandler(.savingOutput)
 
         try FileAccess.saveOutput(workingOutput, to: finalOutputURL, originalSourceURL: sourceURL)
-        return finalOutputURL
+        var savedStemURLs: [URL] = []
+
+        if saveSeparatedStems {
+            for stem in preprocessingResult.separatedStems {
+                let finalStemURL = finalSeparatedStemURL(
+                    for: stem,
+                    sourceURL: sourceURL,
+                    finalOutputURL: finalOutputURL
+                )
+                try FileAccess.saveOutput(stem.workingURL, to: finalStemURL, originalSourceURL: sourceURL)
+                savedStemURLs.append(finalStemURL)
+                logHandler("Saved \(stem.displayName) stem: \(finalStemURL.path)")
+            }
+        }
+
+        return TranscriptionResult(midiURL: finalOutputURL, savedStemURLs: savedStemURLs)
+    }
+
+    private func finalSeparatedStemURL(
+        for stem: SeparatedStem,
+        sourceURL: URL,
+        finalOutputURL: URL
+    ) -> URL {
+        let base = sourceURL.deletingPathExtension().lastPathComponent
+        let fileName = "\(base)-\(stem.fileSuffix).wav"
+        return finalOutputURL.deletingLastPathComponent().appendingPathComponent(fileName)
     }
 
     private func runProcess(
