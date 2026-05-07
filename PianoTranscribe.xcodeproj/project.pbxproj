@@ -12,6 +12,7 @@
 		000000000000000000000103 /* TranscriptionJob.swift in Sources */ = {isa = PBXBuildFile; fileRef = 000000000000000000000203 /* TranscriptionJob.swift */; };
 		000000000000000000000104 /* TranskunDevice.swift in Sources */ = {isa = PBXBuildFile; fileRef = 000000000000000000000204 /* TranskunDevice.swift */; };
 		000000000000000000000117 /* OutputDestinationMode.swift in Sources */ = {isa = PBXBuildFile; fileRef = 000000000000000000000217 /* OutputDestinationMode.swift */; };
+		000000000000000000000118 /* TranskunCheckpoint.swift in Sources */ = {isa = PBXBuildFile; fileRef = 000000000000000000000218 /* TranskunCheckpoint.swift */; };
 		000000000000000000000105 /* AudioPreprocessor.swift in Sources */ = {isa = PBXBuildFile; fileRef = 000000000000000000000205 /* AudioPreprocessor.swift */; };
 		000000000000000000000106 /* FileAccess.swift in Sources */ = {isa = PBXBuildFile; fileRef = 000000000000000000000206 /* FileAccess.swift */; };
 		000000000000000000000107 /* PythonBackendManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 000000000000000000000207 /* PythonBackendManager.swift */; };
@@ -33,6 +34,7 @@
 		000000000000000000000203 /* TranscriptionJob.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TranscriptionJob.swift; sourceTree = "<group>"; };
 		000000000000000000000204 /* TranskunDevice.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TranskunDevice.swift; sourceTree = "<group>"; };
 		000000000000000000000217 /* OutputDestinationMode.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OutputDestinationMode.swift; sourceTree = "<group>"; };
+		000000000000000000000218 /* TranskunCheckpoint.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TranskunCheckpoint.swift; sourceTree = "<group>"; };
 		000000000000000000000205 /* AudioPreprocessor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AudioPreprocessor.swift; sourceTree = "<group>"; };
 		000000000000000000000206 /* FileAccess.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FileAccess.swift; sourceTree = "<group>"; };
 		000000000000000000000207 /* PythonBackendManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PythonBackendManager.swift; sourceTree = "<group>"; };
@@ -89,6 +91,7 @@
 				000000000000000000000203 /* TranscriptionJob.swift */,
 				000000000000000000000204 /* TranskunDevice.swift */,
 				000000000000000000000217 /* OutputDestinationMode.swift */,
+				000000000000000000000218 /* TranskunCheckpoint.swift */,
 			);
 			path = Models;
 			sourceTree = "<group>";
@@ -211,6 +214,7 @@
 				000000000000000000000103 /* TranscriptionJob.swift in Sources */,
 				000000000000000000000104 /* TranskunDevice.swift in Sources */,
 				000000000000000000000117 /* OutputDestinationMode.swift in Sources */,
+				000000000000000000000118 /* TranskunCheckpoint.swift in Sources */,
 				000000000000000000000105 /* AudioPreprocessor.swift in Sources */,
 				000000000000000000000106 /* FileAccess.swift in Sources */,
 				000000000000000000000107 /* PythonBackendManager.swift in Sources */,

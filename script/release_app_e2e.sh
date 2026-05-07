@@ -43,6 +43,7 @@ rm -f "$OUTPUT_MID" "$PIANO_STEM" "$ORCHESTRA_STEM" "$RESULT_JSON"
   --env "PIANO_TRANSCRIBE_AUTORUN_INPUT=$INPUT_WAV" \
   --env "PIANO_TRANSCRIBE_AUTORUN_RESULT_FILE=$RESULT_JSON" \
   --env "PIANO_TRANSCRIBE_AUTORUN_OUTPUT_DESTINATION=source-folder" \
+  --env "PIANO_TRANSCRIBE_AUTORUN_TRANSKUN_CHECKPOINT=benchmark-v2" \
   --env "PIANO_TRANSCRIBE_AUTORUN_PREPROCESSOR=pc-separation" \
   --env "PIANO_TRANSCRIBE_AUTORUN_SAVE_STEMS=1" \
   --env "PIANO_TRANSCRIBE_AUTORUN_REVEAL=0" \
@@ -66,6 +67,7 @@ from pathlib import Path
 
 result = json.loads(Path("$RESULT_JSON").read_text())
 assert result["status"] == "completed", result
+assert result["checkpoint"] == "benchmark-v2", result
 assert result["outputExists"] is True, result
 assert result["output"] == "$OUTPUT_MID", result
 assert Path("$OUTPUT_MID").stat().st_size > 0, result

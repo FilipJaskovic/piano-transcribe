@@ -8,6 +8,11 @@ import UniformTypeIdentifiers
 final class AppModel {
     var status: TranscriptionStatus = .idle
     var selectedDevice: TranskunDevice = .cpu
+    var selectedCheckpoint: TranskunCheckpoint = .packagedDefault {
+        didSet {
+            UserDefaults.standard.set(selectedCheckpoint.rawValue, forKey: SettingsKeys.selectedCheckpoint)
+        }
+    }
     var isPianoSeparationEnabled = false
     var shouldSaveSeparatedStems = true {
         didSet {
@@ -35,6 +40,9 @@ final class AppModel {
     var isPianoSeparationAvailable = false
     var pianoSeparationAvailabilityMessage = "Separator backend not installed."
     var pianoSeparationAvailabilityDetails: String?
+    var isBenchmarkCheckpointAvailable = false
+    var benchmarkCheckpointAvailabilityMessage = "Benchmark checkpoint not installed."
+    var benchmarkCheckpointAvailabilityDetails: String?
 
     private let transcriptionService = TranscriptionService()
     private var transcriptionTask: Task<Void, Never>?
@@ -56,7 +64,13 @@ final class AppModel {
             shouldSaveSeparatedStems = defaults.bool(forKey: SettingsKeys.shouldSaveSeparatedStems)
         }
 
+        if let rawCheckpoint = defaults.string(forKey: SettingsKeys.selectedCheckpoint),
+           let checkpoint = TranskunCheckpoint(rawValue: rawCheckpoint) {
+            selectedCheckpoint = checkpoint
+        }
+
         refreshPianoSeparationAvailability()
+        refreshBenchmarkCheckpointAvailability()
     }
 
     var canCancel: Bool {
@@ -100,11 +114,21 @@ final class AppModel {
         }
 
         refreshPianoSeparationAvailability()
+        refreshBenchmarkCheckpointAvailability()
         if isPianoSeparationEnabled && !isPianoSeparationAvailable {
             status = .failed(pianoSeparationAvailabilityMessage)
             appendLog(pianoSeparationAvailabilityMessage)
             if let details = pianoSeparationAvailabilityDetails,
                details != pianoSeparationAvailabilityMessage {
+                appendLog(details)
+            }
+            return
+        }
+        if selectedCheckpoint == .benchmarkV2 && !isBenchmarkCheckpointAvailable {
+            status = .failed(benchmarkCheckpointAvailabilityMessage)
+            appendLog(benchmarkCheckpointAvailabilityMessage)
+            if let details = benchmarkCheckpointAvailabilityDetails,
+               details != benchmarkCheckpointAvailabilityMessage {
                 appendLog(details)
             }
             return
@@ -147,6 +171,10 @@ final class AppModel {
         if let saveStems = environment["PIANO_TRANSCRIBE_AUTORUN_SAVE_STEMS"] {
             shouldSaveSeparatedStems = saveStems != "0"
         }
+        if let checkpoint = environment["PIANO_TRANSCRIBE_AUTORUN_TRANSKUN_CHECKPOINT"],
+           let selected = TranskunCheckpoint(rawValue: checkpoint) {
+            selectedCheckpoint = selected
+        }
 
         if environment["PIANO_TRANSCRIBE_AUTORUN_OUTPUT_DESTINATION"] == "source-folder" {
             outputDestinationMode = .sourceFolder
@@ -158,6 +186,7 @@ final class AppModel {
         }
 
         refreshPianoSeparationAvailability()
+        refreshBenchmarkCheckpointAvailability()
         logLines.removeAll()
         status = .copyingInput
 
@@ -184,6 +213,13 @@ final class AppModel {
         pianoSeparationAvailabilityMessage = PythonBackendManager.pianoSeparationUnavailableMessage()
             ?? "Separator backend installed."
         pianoSeparationAvailabilityDetails = PythonBackendManager.pianoSeparationUnavailableDetails()
+    }
+
+    func refreshBenchmarkCheckpointAvailability() {
+        isBenchmarkCheckpointAvailable = PythonBackendManager.isTranskunBenchmarkCheckpointAvailable()
+        benchmarkCheckpointAvailabilityMessage = PythonBackendManager.transkunBenchmarkCheckpointUnavailableMessage()
+            ?? "Benchmark checkpoint installed."
+        benchmarkCheckpointAvailabilityDetails = PythonBackendManager.transkunBenchmarkCheckpointUnavailableDetails()
     }
 
     func handleImporterResult(_ result: Result<[URL], Error>) {
@@ -246,6 +282,7 @@ final class AppModel {
                 sourceURL: sourceURL,
                 finalOutputURL: outputURL,
                 device: selectedDevice,
+                checkpoint: selectedCheckpoint,
                 preprocessor: selectedPreprocessor,
                 saveSeparatedStems: isPianoSeparationEnabled && shouldSaveSeparatedStems,
                 statusHandler: { [weak self] status in
@@ -266,6 +303,7 @@ final class AppModel {
                 sourceURL: sourceURL,
                 outputURL: result.midiURL,
                 stemOutputURLs: result.savedStemURLs,
+                checkpoint: selectedCheckpoint,
                 message: nil,
                 resultURL: automationResultURL
             )
@@ -279,6 +317,7 @@ final class AppModel {
                 status: "cancelled",
                 sourceURL: sourceURL,
                 outputURL: attemptedOutputURL,
+                checkpoint: selectedCheckpoint,
                 message: "Cancelled",
                 resultURL: automationResultURL
             )
@@ -290,6 +329,7 @@ final class AppModel {
                 status: "failed",
                 sourceURL: sourceURL,
                 outputURL: attemptedOutputURL,
+                checkpoint: selectedCheckpoint,
                 message: message,
                 resultURL: automationResultURL
             )
@@ -384,6 +424,8 @@ final class AppModel {
                 return "Piano/orchestra separation runner script was not found."
             case .pianoSeparationRepositoryNotFound:
                 return "Bundled pc-separation files or HDMC checkpoint are missing."
+            case .transkunBenchmarkCheckpointNotFound:
+                return "Transkun benchmark checkpoint is missing or damaged."
             }
         }
 
@@ -394,6 +436,7 @@ final class AppModel {
         static let outputDestinationMode = "outputDestinationMode"
         static let customOutputFolderPath = "customOutputFolderPath"
         static let shouldSaveSeparatedStems = "shouldSaveSeparatedStems"
+        static let selectedCheckpoint = "selectedCheckpoint"
     }
 
     private var selectedPreprocessor: AudioPreprocessor {
@@ -409,6 +452,7 @@ final class AppModel {
         sourceURL: URL,
         outputURL: URL?,
         stemOutputURLs: [URL] = [],
+        checkpoint: TranskunCheckpoint,
         message: String?,
         resultURL: URL?
     ) {
@@ -417,6 +461,7 @@ final class AppModel {
         var payload: [String: Any] = [
             "status": status,
             "input": sourceURL.path,
+            "checkpoint": checkpoint.rawValue,
             "logs": logLines
         ]
 

@@ -33,6 +33,7 @@ final class TranscriptionService: @unchecked Sendable {
         sourceURL: URL,
         finalOutputURL: URL,
         device: TranskunDevice,
+        checkpoint: TranskunCheckpoint,
         preprocessor: AudioPreprocessor,
         saveSeparatedStems: Bool,
         statusHandler: @escaping @Sendable (TranscriptionStatus) -> Void,
@@ -60,6 +61,13 @@ final class TranscriptionService: @unchecked Sendable {
         let workingOutput = jobDir.appendingPathComponent("output.mid")
 
         statusHandler(.transcribing)
+        let runnerArguments = try transkunRunnerArguments(
+            runnerScriptURL: backend.runnerScriptURL,
+            inputURL: processedInput,
+            outputURL: workingOutput,
+            device: device,
+            checkpoint: checkpoint
+        )
         var environment = ProcessInfo.processInfo.environment
         if let ffmpegDir = backend.ffmpegBinDirectoryURL {
             let existingPath = environment["PATH"] ?? "/usr/bin:/bin:/usr/sbin:/sbin"
@@ -70,12 +78,7 @@ final class TranscriptionService: @unchecked Sendable {
 
         _ = try await runProcess(
             executableURL: backend.pythonExecutableURL,
-            arguments: [
-                backend.runnerScriptURL.path,
-                "--input", processedInput.path,
-                "--output", workingOutput.path,
-                "--device", device.rawValue
-            ],
+            arguments: runnerArguments,
             environment: environment,
             logHandler: logHandler
         )
@@ -103,6 +106,29 @@ final class TranscriptionService: @unchecked Sendable {
         }
 
         return TranscriptionResult(midiURL: finalOutputURL, savedStemURLs: savedStemURLs)
+    }
+
+    private func transkunRunnerArguments(
+        runnerScriptURL: URL,
+        inputURL: URL,
+        outputURL: URL,
+        device: TranskunDevice,
+        checkpoint: TranskunCheckpoint
+    ) throws -> [String] {
+        var arguments = [
+            runnerScriptURL.path,
+            "--input", inputURL.path,
+            "--output", outputURL.path,
+            "--device", device.rawValue,
+            "--checkpoint", checkpoint.rawValue
+        ]
+
+        if checkpoint == .benchmarkV2 {
+            let checkpointDirectory = try PythonBackendManager.resolveTranskunBenchmarkCheckpointDirectory()
+            arguments += ["--checkpoint-dir", checkpointDirectory.path]
+        }
+
+        return arguments
     }
 
     private func finalSeparatedStemURL(

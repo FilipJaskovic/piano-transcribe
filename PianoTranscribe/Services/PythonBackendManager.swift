@@ -19,6 +19,7 @@ enum PythonBackendError: LocalizedError {
     case pianoSeparationBackendNotFound([String])
     case pianoSeparationRunnerNotFound([String])
     case pianoSeparationRepositoryNotFound([String])
+    case transkunBenchmarkCheckpointNotFound([String])
 
     var errorDescription: String? {
         switch self {
@@ -32,6 +33,8 @@ enum PythonBackendError: LocalizedError {
             return "Piano/orchestra separation runner script was not found. Checked: \(paths.joined(separator: ", "))"
         case .pianoSeparationRepositoryNotFound(let paths):
             return "pc-separation checkout was not found. Checked: \(paths.joined(separator: ", "))"
+        case .transkunBenchmarkCheckpointNotFound(let paths):
+            return "Transkun benchmark checkpoint was not found. Checked: \(paths.joined(separator: ", "))"
         }
     }
 }
@@ -55,6 +58,40 @@ struct PythonBackendManager {
 
     static func isPianoSeparationBackendAvailable() -> Bool {
         (try? resolvePianoSeparationBackend()) != nil
+    }
+
+    static func resolveTranskunBenchmarkCheckpointDirectory() throws -> URL {
+        #if DEBUG
+        return try resolveDebugTranskunBenchmarkCheckpointDirectory()
+        #else
+        return try resolveReleaseTranskunBenchmarkCheckpointDirectory()
+        #endif
+    }
+
+    static func isTranskunBenchmarkCheckpointAvailable() -> Bool {
+        (try? resolveTranskunBenchmarkCheckpointDirectory()) != nil
+    }
+
+    static func transkunBenchmarkCheckpointUnavailableMessage() -> String? {
+        do {
+            _ = try resolveTranskunBenchmarkCheckpointDirectory()
+            return nil
+        } catch {
+            #if DEBUG
+            return "Benchmark checkpoint not installed."
+            #else
+            return "Bundled benchmark checkpoint is missing or damaged."
+            #endif
+        }
+    }
+
+    static func transkunBenchmarkCheckpointUnavailableDetails() -> String? {
+        do {
+            _ = try resolveTranskunBenchmarkCheckpointDirectory()
+            return nil
+        } catch {
+            return error.localizedDescription
+        }
     }
 
     static func pianoSeparationUnavailableMessage() -> String? {
@@ -237,6 +274,53 @@ struct PythonBackendManager {
             repo.appendingPathComponent("utils.py").path,
             repo.appendingPathComponent("config/cfg_hdemucs.yaml").path,
             repo.appendingPathComponent("checkpoints/HDMC20_R_H_HU_HUS/hdemucs_best.pth").path
+        ]
+    }
+
+    private static func resolveDebugTranskunBenchmarkCheckpointDirectory() throws -> URL {
+        let environment = ProcessInfo.processInfo.environment
+        let projectRoot = URL(fileURLWithPath: environment["PIANO_TRANSCRIBE_ROOT"] ?? FileManager.default.currentDirectoryPath, isDirectory: true)
+
+        var candidates: [URL] = []
+        if let checkpointPath = environment["PIANO_TRANSCRIBE_TRANSKUN_BENCHMARK_DIR"], !checkpointPath.isEmpty {
+            candidates.append(URL(fileURLWithPath: checkpointPath, isDirectory: true))
+        }
+        candidates.append(projectRoot.appendingPathComponent("External/transkun-checkpoints/benchmark-v2", isDirectory: true))
+
+        guard let directory = candidates.first(where: isValidTranskunBenchmarkCheckpointDirectory(_:)) else {
+            throw PythonBackendError.transkunBenchmarkCheckpointNotFound(
+                candidates.flatMap { checkedTranskunBenchmarkCheckpointPaths($0) }
+            )
+        }
+
+        return directory
+    }
+
+    private static func resolveReleaseTranskunBenchmarkCheckpointDirectory() throws -> URL {
+        guard let resources = Bundle.main.resourceURL else {
+            throw PythonBackendError.transkunBenchmarkCheckpointNotFound(["Bundle.main.resourceURL"])
+        }
+
+        let directory = resources.appendingPathComponent("Backend/transkun-checkpoints/benchmark-v2", isDirectory: true)
+        guard isValidTranskunBenchmarkCheckpointDirectory(directory) else {
+            throw PythonBackendError.transkunBenchmarkCheckpointNotFound(
+                checkedTranskunBenchmarkCheckpointPaths(directory)
+            )
+        }
+
+        return directory
+    }
+
+    private static func isValidTranskunBenchmarkCheckpointDirectory(_ directory: URL) -> Bool {
+        checkedTranskunBenchmarkCheckpointPaths(directory).allSatisfy {
+            FileManager.default.fileExists(atPath: $0)
+        }
+    }
+
+    private static func checkedTranskunBenchmarkCheckpointPaths(_ directory: URL) -> [String] {
+        [
+            directory.appendingPathComponent("checkpoint.pt").path,
+            directory.appendingPathComponent("model.conf").path
         ]
     }
 }

@@ -13,6 +13,16 @@ PYTHON_BIN=python3.10 ./Packaging/build_pc_separation_release.sh
 ./Packaging/package_dmg.sh --dev-venv-ok --skip-notarize
 ```
 
+Release packaging also stages the upstream Transkun model-card benchmark
+checkpoint. For local testing before packaging, download it with:
+
+```bash
+./Packaging/download_transkun_benchmark_checkpoint.sh
+```
+
+That writes `checkpoint.pt` and `model.conf` under
+`External/transkun-checkpoints/benchmark-v2`.
+
 The developer DMG is useful for validating the app bundle shape, but it is not a
 final redistributable release because the staged Python runtime may still depend
 on machine-local framework paths.

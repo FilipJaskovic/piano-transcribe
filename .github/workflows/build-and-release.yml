@@ -44,6 +44,13 @@ jobs:
       - name: Build and smoke-test backend
         run: ./Packaging/build_backend_dev.sh
 
+      - name: Download and smoke-test Transkun benchmark checkpoint
+        run: |
+          ./Packaging/download_transkun_benchmark_checkpoint.sh
+          .venv/bin/python Backend/smoke_test.py \
+            --checkpoint benchmark-v2 \
+            --checkpoint-dir "$PWD/External/transkun-checkpoints/benchmark-v2"
+
       - name: Build and smoke-test pc-separation backend
         run: |
           PYTHON_BIN=python3.10 ./Packaging/build_pc_separation_release.sh
@@ -53,6 +60,8 @@ jobs:
       - name: Run app E2E smoke test
         env:
           PIANO_TRANSCRIBE_TEST_SEPARATOR: "1"
+          PIANO_TRANSCRIBE_TEST_BENCHMARK_CHECKPOINT: "1"
+          PIANO_TRANSCRIBE_TRANSKUN_BENCHMARK_DIR: ${{ github.workspace }}/External/transkun-checkpoints/benchmark-v2
           PIANO_TRANSCRIBE_PC_SEPARATION_ROOT: ${{ github.workspace }}/External/pc-separation
           PIANO_TRANSCRIBE_PC_SEPARATION_PYTHON: ${{ github.workspace }}/.pc-separation-env/bin/python
         run: ./script/app_e2e.sh

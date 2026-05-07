@@ -45,6 +45,11 @@ if [[ -d "$BACKEND_DIR" ]]; then
   else
     echo "pc-separation HDMC checkpoint: missing"
   fi
+  if [[ -f "$BACKEND_DIR/transkun-checkpoints/benchmark-v2/checkpoint.pt" && -f "$BACKEND_DIR/transkun-checkpoints/benchmark-v2/model.conf" ]]; then
+    echo "Transkun benchmark checkpoint: present"
+  else
+    echo "Transkun benchmark checkpoint: missing"
+  fi
 else
   echo
   echo "Backend staged: no"

@@ -32,6 +32,8 @@ CUSTOM_RESULT_JSON="$TMP_DIR/result-custom-output.json"
 BAD_MIDI="$TMP_DIR/not-audio.mid"
 BAD_RESULT_JSON="$TMP_DIR/result-bad-input.json"
 SEPARATION_RESULT_JSON="$TMP_DIR/result-separation-missing.json"
+BENCHMARK_RESULT_JSON="$TMP_DIR/result-benchmark.json"
+BENCHMARK_OUTPUT_MID="$TMP_DIR/silence-benchmark-transkun.mid"
 
 mkdir -p "$CUSTOM_OUTPUT_DIR"
 
@@ -62,6 +64,7 @@ launch_and_wait() {
   local result="$3"
   local preprocessor="${4:-}"
   local output_folder="${5:-}"
+  local checkpoint="${6:-}"
   local output_destination="source-folder"
 
   if [[ -n "$output" ]]; then
@@ -97,6 +100,14 @@ launch_and_wait() {
 
   if [[ -n "${PIANO_TRANSCRIBE_PC_SEPARATION_PYTHON:-}" ]]; then
     open_args+=(--env "PIANO_TRANSCRIBE_PC_SEPARATION_PYTHON=$PIANO_TRANSCRIBE_PC_SEPARATION_PYTHON")
+  fi
+
+  if [[ -n "${PIANO_TRANSCRIBE_TRANSKUN_BENCHMARK_DIR:-}" ]]; then
+    open_args+=(--env "PIANO_TRANSCRIBE_TRANSKUN_BENCHMARK_DIR=$PIANO_TRANSCRIBE_TRANSKUN_BENCHMARK_DIR")
+  fi
+
+  if [[ -n "$checkpoint" ]]; then
+    open_args+=(--env "PIANO_TRANSCRIBE_AUTORUN_TRANSKUN_CHECKPOINT=$checkpoint")
   fi
 
   if [[ -n "$output_folder" ]]; then
@@ -152,6 +163,22 @@ assert result["status"] == "failed", result
 assert "MIDI files are not valid input" in result["message"], result
 print("App E2E MIDI rejection OK")
 PY
+
+if [[ "${PIANO_TRANSCRIBE_TEST_BENCHMARK_CHECKPOINT:-0}" == "1" ]]; then
+  launch_and_wait "$INPUT_WAV" "$BENCHMARK_OUTPUT_MID" "$BENCHMARK_RESULT_JSON" "" "" "benchmark-v2"
+  ".venv/bin/python" - <<PY
+import json
+from pathlib import Path
+
+result = json.loads(Path("$BENCHMARK_RESULT_JSON").read_text())
+assert result["status"] == "completed", result
+assert result["checkpoint"] == "benchmark-v2", result
+assert result["outputExists"] is True, result
+assert result["output"] == "$BENCHMARK_OUTPUT_MID", result
+assert Path("$BENCHMARK_OUTPUT_MID").stat().st_size > 0, result
+print("App E2E benchmark checkpoint OK:", "$BENCHMARK_OUTPUT_MID")
+PY
+fi
 
 if [[ "${PIANO_TRANSCRIBE_TEST_SEPARATOR:-0}" == "1" ]]; then
   rm -f "$PIANO_STEM" "$ORCHESTRA_STEM"

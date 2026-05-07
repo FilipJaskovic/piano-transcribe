@@ -12,6 +12,25 @@ struct SettingsView: View {
                     }
                 }
 
+                Picker("Transkun checkpoint", selection: $model.selectedCheckpoint) {
+                    Text(TranskunCheckpoint.packagedDefault.label)
+                        .tag(TranskunCheckpoint.packagedDefault)
+
+                    Text(TranskunCheckpoint.benchmarkV2.label)
+                        .tag(TranskunCheckpoint.benchmarkV2)
+                        .disabled(!model.isBenchmarkCheckpointAvailable)
+                }
+
+                Text(model.selectedCheckpoint.detail)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+
+                if !model.isBenchmarkCheckpointAvailable {
+                    Text(model.benchmarkCheckpointAvailabilityMessage)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+
                 Toggle("Separate piano from orchestra", isOn: $model.isPianoSeparationEnabled)
                     .disabled(!model.isPianoSeparationAvailable)
 

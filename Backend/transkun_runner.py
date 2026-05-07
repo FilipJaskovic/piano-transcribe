@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 import argparse
 import json
+import os
 import shutil
 import subprocess
 import sys
@@ -13,6 +14,9 @@ from pydub import AudioSegment
 
 import transkun
 from transkun.Data import writeMidi
+
+PACKAGED_DEFAULT_CHECKPOINT = "packaged-default"
+BENCHMARK_V2_CHECKPOINT = "benchmark-v2"
 
 
 def emit(event: str, **payload):
@@ -114,17 +118,48 @@ def load_checkpoint(weight_path: Path, device: str):
         return torch.load(str(weight_path), map_location=device)
 
 
+def resolve_checkpoint_paths(
+    checkpoint: str,
+    checkpoint_dir: Path | None,
+    weight_path: Path | None,
+    conf_path: Path | None,
+) -> tuple[Path, Path]:
+    if weight_path is not None or conf_path is not None:
+        if weight_path is None or conf_path is None:
+            raise ValueError("--weight and --conf must be provided together.")
+        return weight_path, conf_path
+
+    if checkpoint == PACKAGED_DEFAULT_CHECKPOINT:
+        return package_file("pretrained/2.0.pt"), package_file("pretrained/2.0.conf")
+
+    if checkpoint == BENCHMARK_V2_CHECKPOINT:
+        root = checkpoint_dir
+        if root is None:
+            env_path = os.environ.get("PIANO_TRANSCRIBE_TRANSKUN_BENCHMARK_DIR")
+            root = Path(env_path) if env_path else package_file("pretrained/model-card/benchmark-v2")
+        return root / "checkpoint.pt", root / "model.conf"
+
+    raise ValueError(f"Unknown Transkun checkpoint: {checkpoint}")
+
+
 def transcribe(
     input_path: Path,
     output_path: Path,
     device: str,
+    checkpoint: str,
+    checkpoint_dir: Path | None,
+    weight_path: Path | None,
+    conf_path: Path | None,
     segment_hop_size: float | None,
     segment_size: float | None,
 ):
-    emit("loading_config")
-
-    weight_path = package_file("pretrained/2.0.pt")
-    conf_path = package_file("pretrained/2.0.conf")
+    weight_path, conf_path = resolve_checkpoint_paths(
+        checkpoint=checkpoint,
+        checkpoint_dir=checkpoint_dir,
+        weight_path=weight_path,
+        conf_path=conf_path,
+    )
+    emit("loading_config", checkpoint=checkpoint, weight=str(weight_path), conf=str(conf_path))
 
     if not weight_path.exists():
         raise FileNotFoundError(f"Missing Transkun weight file: {weight_path}")
@@ -182,6 +217,15 @@ def main() -> int:
     parser.add_argument("--input", required=True, help="Input audio file")
     parser.add_argument("--output", required=True, help="Output MIDI file")
     parser.add_argument("--device", default="cpu", choices=["cpu", "mps"])
+    parser.add_argument(
+        "--checkpoint",
+        default=PACKAGED_DEFAULT_CHECKPOINT,
+        choices=[PACKAGED_DEFAULT_CHECKPOINT, BENCHMARK_V2_CHECKPOINT],
+        help="Named Transkun checkpoint to use.",
+    )
+    parser.add_argument("--checkpoint-dir", help="Directory containing checkpoint.pt and model.conf.")
+    parser.add_argument("--weight", help="Explicit Transkun checkpoint weight path.")
+    parser.add_argument("--conf", help="Explicit Transkun model config path.")
     parser.add_argument("--segment-hop-size", type=float, default=None)
     parser.add_argument("--segment-size", type=float, default=None)
 
@@ -192,6 +236,10 @@ def main() -> int:
             input_path=Path(args.input),
             output_path=Path(args.output),
             device=args.device,
+            checkpoint=args.checkpoint,
+            checkpoint_dir=Path(args.checkpoint_dir) if args.checkpoint_dir else None,
+            weight_path=Path(args.weight) if args.weight else None,
+            conf_path=Path(args.conf) if args.conf else None,
             segment_hop_size=args.segment_hop_size,
             segment_size=args.segment_size,
         )

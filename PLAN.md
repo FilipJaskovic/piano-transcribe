@@ -6,7 +6,7 @@ This file is the persistent build plan for Piano transcribe, a native macOS wrap
 
 ## Progress Tracker
 
-Current status: Developer MVP is implemented and verified. Backend WAV/MP3 smoke tests pass on CPU, the SwiftUI app builds and launches, automated app E2E audio -> MIDI passes, `.mid` input rejection passes, configurable MIDI output destination passes, bundled HDMC piano/orchestra separation uses chunked inference, the app can save separated piano/orchestra WAV stems beside the MIDI, and the private GitHub repository has a macOS 26 workflow for backend smoke testing, app E2E testing, Release building, DMG packaging, release-app E2E, and artifact upload.
+Current status: Developer MVP is implemented and verified. Backend WAV/MP3 smoke tests pass on CPU, the SwiftUI app builds and launches, automated app E2E audio -> MIDI passes, `.mid` input rejection passes, configurable MIDI output destination passes, bundled HDMC piano/orchestra separation uses chunked inference, the app can save separated piano/orchestra WAV stems beside the MIDI, the app can select the Transkun model-card benchmark V2 checkpoint when bundled/installed, and the private GitHub repository has a macOS 26 workflow for backend smoke testing, app E2E testing, Release building, DMG packaging, release-app E2E, and artifact upload.
 
 | Milestone | Status | Notes |
 | --- | --- | --- |
@@ -35,6 +35,11 @@ GitHub tracking:
 
 ### 2026-05-07
 
+- Added a Transkun checkpoint selector.
+- The default remains the pip-packaged Transkun V2 No Pedal Ext checkpoint.
+- Added `Benchmark V2`, backed by the upstream model-card `Transkun V2` Google Drive checkpoint (`checkpointTransformer.zip` -> `checkpoint.pt` + `model.conf`).
+- `Backend/transkun_runner.py` now accepts `--checkpoint`, `--checkpoint-dir`, `--weight`, and `--conf`.
+- Added `Packaging/download_transkun_benchmark_checkpoint.sh`; release staging and CI now download, smoke-test, bundle, and release-app E2E test the benchmark checkpoint path.
 - Added separated stem output saving.
 - `Backend/pc_separator_runner.py` now accepts `--orchestra-output` and writes both `piano-separated.wav` and `orchestra-separated.wav` from the HDMC estimates.
 - The Swift pipeline carries separated stem URLs through preprocessing, saves `<input-name>-piano-separated.wav` and `<input-name>-orchestra-separated.wav` into the selected MIDI output folder when enabled, and exposes a Settings toggle for stem saving.

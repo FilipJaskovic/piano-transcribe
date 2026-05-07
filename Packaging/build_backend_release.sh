@@ -14,6 +14,7 @@ Stages the Python backend into an already-built app bundle.
 Current implementation:
   - copies Backend/transkun_runner.py
   - copies Backend/pc_separator_runner.py
+  - downloads and stages the Transkun V2 benchmark checkpoint
   - copies the existing .venv into Contents/Resources/Backend/python
   - builds and copies pc-separation into Contents/Resources/Backend/pc-separation
   - copies .pc-separation-env into Contents/Resources/Backend/pc-separation-python
@@ -90,11 +91,13 @@ fi
 
 PC_REPO_DIR="${PIANO_TRANSCRIBE_PC_SEPARATION_ROOT:-$ROOT_DIR/External/pc-separation}"
 PC_ENV_DIR="${PIANO_TRANSCRIBE_PC_SEPARATION_ENV:-$ROOT_DIR/.pc-separation-env}"
+TRANSKUN_BENCHMARK_DIR="${PIANO_TRANSCRIBE_TRANSKUN_BENCHMARK_DIR:-$ROOT_DIR/External/transkun-checkpoints/benchmark-v2}"
 
 BACKEND_DIR="$APP_BUNDLE/Contents/Resources/Backend"
 PYTHON_DIR="$BACKEND_DIR/python"
 PC_PYTHON_DIR="$BACKEND_DIR/pc-separation-python"
 PC_STAGED_REPO="$BACKEND_DIR/pc-separation"
+TRANSKUN_CHECKPOINT_DIR="$BACKEND_DIR/transkun-checkpoints/benchmark-v2"
 BIN_DIR="$BACKEND_DIR/bin"
 LICENSE_DIR="$BACKEND_DIR/licenses"
 
@@ -102,6 +105,7 @@ rm -rf "$BACKEND_DIR"
 mkdir -p "$PYTHON_DIR" "$PC_PYTHON_DIR" "$PC_STAGED_REPO" "$BIN_DIR" "$LICENSE_DIR"
 
 "$ROOT_DIR/Packaging/build_pc_separation_release.sh"
+DEST_DIR="$TRANSKUN_BENCHMARK_DIR" "$ROOT_DIR/Packaging/download_transkun_benchmark_checkpoint.sh"
 
 rsync -aL \
   --delete \
@@ -132,6 +136,10 @@ if [[ -d "$PC_STAGED_REPO/checkpoints" ]]; then
     -exec rm -rf {} +
 fi
 
+rsync -aL \
+  --delete \
+  "$TRANSKUN_BENCHMARK_DIR/" "$TRANSKUN_CHECKPOINT_DIR/"
+
 install -m 755 "$ROOT_DIR/Backend/transkun_runner.py" "$BACKEND_DIR/transkun_runner.py"
 install -m 755 "$ROOT_DIR/Backend/pc_separator_runner.py" "$BACKEND_DIR/pc_separator_runner.py"
 install -m 755 "$ROOT_DIR/Backend/pc_separator_smoke_test.py" "$BACKEND_DIR/pc_separator_smoke_test.py"
@@ -152,6 +160,7 @@ This directory contains preliminary release license and provenance notes.
 Included components require notices, including:
 
 - Transkun license
+- Transkun V2 benchmark checkpoint source/provenance
 - PyTorch license and notices
 - Python runtime license
 - FFmpeg license/build configuration
@@ -190,6 +199,7 @@ PY
 pc-separation Python: $("$PC_PYTHON_DIR/bin/python" --version 2>&1)
 pc-separation repo: $PC_STAGED_REPO
 pc-separation checkpoint: $PC_STAGED_REPO/checkpoints/HDMC20_R_H_HU_HUS/hdemucs_best.pth
+Transkun benchmark checkpoint: $TRANSKUN_CHECKPOINT_DIR/checkpoint.pt
 
 WARNING: This backend was staged from the developer .venv. It is useful for
 developer DMG testing, but it is not yet a clean standalone runtime.

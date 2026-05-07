@@ -1,3 +1,4 @@
+import argparse
 from pathlib import Path
 import struct
 import subprocess
@@ -16,6 +17,11 @@ def write_silent_wav(path: Path):
 
 
 def main():
+    parser = argparse.ArgumentParser(description="Transkun backend smoke test")
+    parser.add_argument("--checkpoint", default="packaged-default", choices=["packaged-default", "benchmark-v2"])
+    parser.add_argument("--checkpoint-dir")
+    args = parser.parse_args()
+
     import torch
     import transkun
 
@@ -39,7 +45,11 @@ def main():
             str(mid),
             "--device",
             "cpu",
+            "--checkpoint",
+            args.checkpoint,
         ]
+        if args.checkpoint_dir:
+            cmd.extend(["--checkpoint-dir", args.checkpoint_dir])
         subprocess.run(cmd, check=True)
 
         if not mid.exists() or mid.stat().st_size == 0:
