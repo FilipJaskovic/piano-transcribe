@@ -2,33 +2,26 @@ import SwiftUI
 
 struct DropZoneView: View {
     let isTargeted: Bool
+    let chooseAudio: () -> Void
 
     var body: some View {
-        RoundedRectangle(cornerRadius: 8)
-            .strokeBorder(
-                isTargeted ? Color.accentColor : Color.secondary.opacity(0.45),
-                style: StrokeStyle(lineWidth: 2, dash: [8, 6])
-            )
-            .background {
-                RoundedRectangle(cornerRadius: 8)
-                    .fill(isTargeted ? Color.accentColor.opacity(0.08) : Color.secondary.opacity(0.05))
-            }
-            .frame(height: 190)
-            .overlay {
-                VStack(spacing: 12) {
-                    Image(systemName: "waveform")
-                        .font(.system(size: 44))
-                        .foregroundStyle(isTargeted ? Color.accentColor : Color.secondary)
+        VStack(spacing: 16) {
+            Image(systemName: isTargeted ? "arrow.down.document" : "pianokeys")
+                .font(.system(size: 40, weight: .regular))
+                .foregroundStyle(isTargeted ? Color.accentColor : .secondary)
+                .accessibilityHidden(true)
 
-                    Text(isTargeted ? "Release to transcribe" : "Drop audio here")
-                        .font(.title3.weight(.medium))
-                }
-            }
-            .animation(.easeOut(duration: 0.16), value: isTargeted)
+            Text(isTargeted ? "Release to Transcribe" : "Piano Audio")
+                .font(.title3.weight(.semibold))
+
+            Button("Choose Audio...", action: chooseAudio)
+                .buttonStyle(.borderedProminent)
+        }
+        .padding(24)
     }
 }
 
 #Preview {
-    DropZoneView(isTargeted: false)
-        .padding()
+    DropZoneView(isTargeted: false, chooseAudio: {})
+        .frame(width: 600, height: 240)
 }

@@ -13,6 +13,7 @@ final class AppModel {
     private var startupAutomationHandled = false
 
     private(set) var status: TranscriptionStatus = .idle
+    private(set) var sourceURL: URL?
     private(set) var progress: Double?
     private(set) var logLines: [String] = []
     private(set) var isBenchmarkCheckpointAvailable = false
@@ -147,6 +148,7 @@ final class AppModel {
         guard !isRunning else { return }
         logLines.removeAll()
         progress = nil
+        self.sourceURL = sourceURL
         let checkpoint = selectedCheckpoint
         do {
             guard sourceURL.isFileURL, SupportedAudioTypes.extensions.contains(sourceURL.pathExtension.lowercased()) else {

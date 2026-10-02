@@ -5,81 +5,65 @@ struct StatusView: View {
     var progress: Double? = nil
 
     var body: some View {
-        HStack(spacing: 10) {
-            icon
+        HStack(alignment: .top, spacing: 10) {
+            Image(systemName: symbol)
+                .foregroundStyle(symbolColor)
+                .frame(width: 18, height: 18)
+                .accessibilityHidden(true)
 
-            VStack(alignment: .leading, spacing: 3) {
+            VStack(alignment: .leading, spacing: 6) {
                 Text(status.title)
-                    .font(.headline)
+                    .font(.system(.body, weight: .medium))
 
                 if let detail {
                     Text(detail)
                         .font(.callout)
                         .foregroundStyle(.secondary)
-                        .lineLimit(2)
+                        .lineLimit(3)
+                        .textSelection(.enabled)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+
+                if status.isInProgress, let progress {
+                    ProgressView(value: progress)
+                        .progressViewStyle(.linear)
+                        .accessibilityLabel(status.title)
                 }
             }
-
-            Spacer()
-
-            if status.isInProgress, let progress {
-                ProgressView(value: progress)
-                    .frame(width: 120)
-            }
+            .frame(maxWidth: .infinity, alignment: .leading)
         }
-        .padding(14)
-        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 8))
     }
 
-    private var icon: some View {
-        Group {
-            switch status {
-            case .completed:
-                Image(systemName: "checkmark.circle.fill")
-                    .foregroundStyle(.green)
-            case .failed:
-                Image(systemName: "exclamationmark.triangle.fill")
-                    .foregroundStyle(.red)
-            case .cancelled:
-                Image(systemName: "xmark.circle.fill")
-                    .foregroundStyle(.secondary)
-            case .idle:
-                Image(systemName: "music.note")
-                    .foregroundStyle(.secondary)
-            case .preparingBackend, .copyingInput, .transcribing, .savingOutput, .cancelling:
-                Image(systemName: "gearshape.2")
-                    .foregroundStyle(.secondary)
-            }
+    private var symbol: String {
+        switch status {
+        case .completed: "checkmark.circle.fill"
+        case .failed: "exclamationmark.triangle.fill"
+        case .cancelled, .cancelling: "stop.circle"
+        case .idle: "circle"
+        case .preparingBackend, .copyingInput: "waveform"
+        case .transcribing: "pianokeys"
+        case .savingOutput: "square.and.arrow.down"
         }
-        .font(.title3)
-        .frame(width: 24)
+    }
+
+    private var symbolColor: Color {
+        switch status {
+        case .completed: .green
+        case .failed: .orange
+        default: .secondary
+        }
     }
 
     private var detail: String? {
         switch status {
-        case .idle:
-            "Choose or drop a piano audio file."
-        case .preparingBackend:
-            "Checking the local Python backend."
-        case .copyingInput:
-            "Copying the selected file into a job folder."
-        case .transcribing:
-            "Running Transkun V2."
-        case .savingOutput:
-            "Writing the MIDI file."
-        case .completed(let url):
-            url.lastPathComponent
-        case .failed(let message):
-            message
-        case .cancelled:
-            "The current job was stopped."
-        case .cancelling:
-            "Waiting for the backend to stop."
+        case .completed(let url): url.lastPathComponent
+        case .failed(let message): message
+        default: nil
         }
     }
 }
 
 #Preview {
-    StatusView(status: .idle)
+    StatusView(status: .transcribing, progress: 0.45)
         .padding()
 }
