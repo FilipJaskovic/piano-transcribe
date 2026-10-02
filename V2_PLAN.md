@@ -17,11 +17,11 @@ V1 source and the original review are backed up at GitHub branch `backup/v1-befo
 | Job lifecycle | Complete | Focused lifecycle tests pass. Native Cancel/retry works; Quit during transcription removes the preview, worker, and worker process group. |
 | File safety | Complete | Keep-both and concurrent publication tests pass; destination preflight runs before inference; successful and failed job caches are cleaned. |
 | Audio and inference | Implemented; integration checks pass | Float decoding and upstream window parity verified; both checkpoint smokes produce notes. A three-minute CPU fixture completes with measured memory; real-recording quality and longer-input scaling remain unmeasured. |
-| Focused tests | Passing locally | Swift 6 lifecycle/export/streams suite; ten backend tests; native default/benchmark/custom output/collision/MIDI rejection E2E. Isolated preferences. |
+| Focused tests | Passing locally and in CI | Swift lifecycle/export/streams tests, backend contract tests, nine packaging gate tests, and native E2E. Full decoder and window checks also pass locally. Isolated preferences. |
 | Native UI refinement | Complete | Native build and E2E pass. Astra on low checked the real idle window, toolbar, Settings, output menu and custom-folder row without clipping; preview left open at Ready. |
-| Standalone packaging | In progress | Pinned redistributable Python 3.12, exact dependency locks, bundled non-GPL FFmpeg and FFprobe, licenses and linkage audit. |
-| Release workflow | In progress | Separate producer and relocated consumer, strict readiness checks, explicit signed or unsigned policy, no automatic developer-DMG publication. |
-| Final qualification | Pending | Build and tests pass; packaged offline app runs without developer paths; remaining signing or clean-machine requirements stated explicitly. |
+| Standalone packaging | Complete for unsigned candidate | DMG bundles pinned Python 3.12, both checkpoints, dependencies, non-GPL FFmpeg/FFprobe, and notices. Final bundle linkage and signature checks pass. |
+| Release workflow | Qualified in unsigned mode | Separate producer and relocated offline consumer pass; signed mode fails closed without credentials. No automatic public release. |
+| Final qualification | Unsigned candidate passes; notarized channel pending | Relocated app runs offline without developer paths. Apple credentials and signed-channel qualification remain required for Gatekeeper-ready distribution. |
 
 Statuses change only when the relevant verification has run. Source changes alone do not establish production readiness.
 
@@ -71,9 +71,24 @@ A 180-second synthetic repeated phrase completes on CPU in 29.62 seconds, with 2
 
 Packaging scripts pass shell syntax checks, workflow YAML parsing, project lint, and five Mach-O dependency-gate tests. GitHub run `37068300848` passed the Swift/backend contract job and installed the pinned standalone Python runtime, all backend dependencies, and legal notices. It then failed at FFmpeg's host-compiler header check. The failure reproduced locally: the host compiler lacked the SDK flags, unlike the target compiler. The recipe now supplies both, enables the correct `pcm_f32le` muxer, and preserves configure diagnostics. The resulting LGPL FFmpeg/FFprobe build passes locally; a Transkun smoke using these exact binaries produces four valid notes.
 
-The complete standalone DMG, relocated offline consumer, signing, and notarization have not yet been qualified. Do not label this snapshot production-ready.
+The unsigned standalone DMG and relocated offline consumer are now qualified. Developer ID signing and notarization are not yet qualified; do not describe this candidate as Gatekeeper-ready.
 
-GitHub run `37069452591` passed the repaired FFmpeg build, standalone backend smoke, and native Debug E2E with both checkpoints. The complete bundle audit then rejected upstream wheel build-machine rpaths and mistook dylib install IDs for load dependencies. The packaging repair distinguishes actual dylib loads, normalizes only verified pinned-wheel paths, and re-signs modified nested binaries before import. External dependency rejection remains strict; the final rerun is still required.
+GitHub run `37069452591` passed the repaired FFmpeg build, standalone backend smoke, and native Debug E2E with both checkpoints. The complete bundle audit then rejected upstream wheel build-machine rpaths and mistook dylib install IDs for load dependencies. The packaging repair distinguishes actual dylib loads, normalizes only verified pinned-wheel paths, and re-signs modified nested binaries before import. External dependency rejection remains strict.
+
+The repaired standalone runtime passes a real audit of 251 Mach-O files. All six repaired binary signatures verify; repeated normalization preserves their hashes. Actual Torch, Torchaudio, Transkun, Pillow JPEG, and SciPy BLAS operations pass, along with nine focused packaging tests. The local compiled release decoder also passes MP3, M4A, FLAC, and 24-bit AIFF duration/finite-sample checks; MP3 transcription produces four valid notes.
+
+[Final candidate run `37070971794`](https://github.com/FilipJaskovic/piano-transcribe/actions/runs/37070971794) passes all three jobs at code commit `6836c8d`: Swift/backend contracts, standalone Apple Silicon bundle, and independent relocated offline artifact test. The final app passes an audit of 254 Mach-O files and strict ad-hoc signature checks. The consumer has no source checkout, Python setup, developer environment, Homebrew dependency, or model download; networking is denied. It verifies both checkpoints, source/custom-folder export, collision preservation, and MIDI rejection. Its audible decoder tone produces zero notes, so it is not a transcription-quality test; the separate phrase smoke produces notes.
+
+The uploaded `piano-transcribe-v2-candidate` artifact is about 454 MiB and includes `piano-transcribe-2.0.0-arm64-unsigned.dmg`, its SHA256 checksum, and consumer tools. No public GitHub Release or tag was created. The isolated native preview remains open at Ready; the installed V1 app and user settings are untouched.
+
+## Remaining release actions
+
+- Supply Developer ID and Apple notarization credentials, then qualify the signed channel before claiming Gatekeeper-ready distribution.
+- Review real piano recordings and unusually long inputs on target Macs. Integration checks do not establish transcription accuracy or arbitrary-length memory scaling.
+- Complete manual Finder drag/drop and remaining visual/accessibility-state checks; native selection, cancellation, retry, and quit have passed.
+- Authorize merging/publishing the chosen distribution channel. The current artifact is an unsigned testing candidate on `v2-production`.
+
+## Repeatable checks
 
 Run focused Swift tests with fake workers for pre-launch cancellation, overlapping admission, restart, pipe tails, split UTF-8, nonzero exit, signal exit, and cache cleanup. Verify that a failed output write preserves an older file and that filename collisions keep both outputs.
 
