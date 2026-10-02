@@ -1,6 +1,6 @@
 # Piano transcribe V2 implementation plan
 
-Last updated: 2026-10-02. Branch: `v2-production`.
+Last updated: 2026-10-03. Branch: `v2-production`.
 
 ## Locked scope
 
@@ -14,9 +14,9 @@ V1 source and the original review are backed up at GitHub branch `backup/v1-befo
 | --- | --- | --- |
 | GitHub V1 backup | Complete | Backup branch pushed and verified. |
 | Remove separator | Complete | Removed from app, backend, packaging, project, and CI. Historical V1 notes retained. |
-| Job lifecycle | Implemented; focused tests pass | Immutable requests, one active job, cancellation waits for teardown, stale events ignored, quit stops children. Real UI quit still needs qualification. |
+| Job lifecycle | Complete | Focused lifecycle tests pass. Native Cancel/retry works; Quit during transcription removes the preview, worker, and worker process group. |
 | File safety | Complete | Keep-both and concurrent publication tests pass; destination preflight runs before inference; successful and failed job caches are cleaned. |
-| Audio and inference | Implemented; short tests pass | Explicit float decoding and upstream window parity verified; both checkpoint smokes produce notes. Long-recording measurements remain pending. |
+| Audio and inference | Implemented; integration checks pass | Float decoding and upstream window parity verified; both checkpoint smokes produce notes. A three-minute CPU fixture completes with measured memory; real-recording quality and longer-input scaling remain unmeasured. |
 | Focused tests | Passing locally | Swift 6 lifecycle/export/streams suite; ten backend tests; native default/benchmark/custom output/collision/MIDI rejection E2E. Isolated preferences. |
 | Native UI refinement | Complete | Native build and E2E pass. Astra on low checked the real idle window, toolbar, Settings, output menu and custom-folder row without clipping; preview left open at Ready. |
 | Standalone packaging | In progress | Pinned redistributable Python 3.12, exact dependency locks, bundled non-GPL FFmpeg and FFprobe, licenses and linkage audit. |
@@ -65,9 +65,15 @@ Native app E2E passes for the packaged default, benchmark V2, source-folder and 
 
 After the native UI rewrite, the Debug build and all seven focused Swift test groups pass again. Native E2E passes again for both checkpoints and all output/input scenarios. Astra on low verified the actual idle window, toolbar actions, Settings, native output menu and custom-folder Choose row, then restored Audio folder output and left the isolated preview open at Ready. A previous inspection session hit a ScreenCaptureKit capture error in a folder dialog; the final limited native inspection passed. Visual inspection of every running/error state and real Finder drag/drop remains a test gap, not a claimed result.
 
+Astra subsequently verified the real native audio importer, active conversion layout, Cancel returning to Cancelled with usable controls, successful retry, and Saved/Show in Finder state without clipping. Quit during active transcription removed the app, Python worker, and worker process group; the isolated preview was relaunched at Ready. It initially lacked developer launch variables; relaunching with the explicit development environment fixed that setup issue. Preparing was too brief to capture, and actual Finder drag/drop remains unverified.
+
+A 180-second synthetic repeated phrase completes on CPU in 29.62 seconds, with 2,247,458,816 bytes maximum resident memory (about 2.1 GiB), and produces 192 valid note events. This local development-runtime measurement checks sustained execution, not accuracy on real piano recordings or bounded memory for arbitrarily long inputs.
+
 Packaging scripts pass shell syntax checks, workflow YAML parsing, project lint, and five Mach-O dependency-gate tests. GitHub run `37068300848` passed the Swift/backend contract job and installed the pinned standalone Python runtime, all backend dependencies, and legal notices. It then failed at FFmpeg's host-compiler header check. The failure reproduced locally: the host compiler lacked the SDK flags, unlike the target compiler. The recipe now supplies both, enables the correct `pcm_f32le` muxer, and preserves configure diagnostics. The resulting LGPL FFmpeg/FFprobe build passes locally; a Transkun smoke using these exact binaries produces four valid notes.
 
 The complete standalone DMG, relocated offline consumer, signing, and notarization have not yet been qualified. Do not label this snapshot production-ready.
+
+GitHub run `37069452591` passed the repaired FFmpeg build, standalone backend smoke, and native Debug E2E with both checkpoints. The complete bundle audit then rejected upstream wheel build-machine rpaths and mistook dylib install IDs for load dependencies. The packaging repair distinguishes actual dylib loads, normalizes only verified pinned-wheel paths, and re-signs modified nested binaries before import. External dependency rejection remains strict; the final rerun is still required.
 
 Run focused Swift tests with fake workers for pre-launch cancellation, overlapping admission, restart, pipe tails, split UTF-8, nonzero exit, signal exit, and cache cleanup. Verify that a failed output write preserves an older file and that filename collisions keep both outputs.
 

@@ -28,6 +28,8 @@ unset PYTHONHOME PYTHONPATH
 "$PYTHON" -I -m pip install --require-hashes --no-build-isolation \
   -r "$ROOT_DIR/Backend/requirements-transkun.lock"
 "$PYTHON" -I -m pip check
+"$PYTHON" -I -B "$ROOT_DIR/Packaging/relocate_wheel_libraries.py" "$DEST"
+cp "$ROOT_DIR/Packaging/relocate_wheel_libraries.py" "$ROOT_DIR/build/Backend/licenses/relocate_wheel_libraries.py"
 "$ROOT_DIR/Packaging/fetch_verified.sh" "$TENSORBOARD_LICENSE_URL" "$TENSORBOARD_LICENSE_SHA256" \
   "$ROOT_DIR/build/Backend/licenses/tensorboard-data-server-LICENSE"
 "$PYTHON" -I "$ROOT_DIR/Packaging/collect_licenses.py" "$ROOT_DIR/build/Backend/licenses"

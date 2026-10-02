@@ -8,6 +8,8 @@ import sys
 
 MAGIC = {b"\xfe\xed\xfa\xce", b"\xce\xfa\xed\xfe", b"\xfe\xed\xfa\xcf", b"\xcf\xfa\xed\xfe",
          b"\xca\xfe\xba\xbe", b"\xbe\xba\xfe\xca", b"\xca\xfe\xba\xbf", b"\xbf\xba\xfe\xca"}
+DYLIB_LOAD_COMMANDS = ("LC_LOAD_DYLIB", "LC_LOAD_WEAK_DYLIB", "LC_REEXPORT_DYLIB",
+                      "LC_LOAD_UPWARD_DYLIB", "LC_LAZY_LOAD_DYLIB")
 
 
 def machos(root: Path) -> list[Path]:
@@ -28,9 +30,10 @@ def tool(*args: str) -> str:
     return subprocess.run(args, capture_output=True, text=True, check=True).stdout
 
 
-def rpaths(binary: Path) -> list[str]:
-    output = tool("/usr/bin/otool", "-l", str(binary))
-    return re.findall(r"cmd LC_RPATH\s+cmdsize \d+\s+path (.*?) \(offset", output)
+def command_paths(output: str, command: str) -> list[str]:
+    field = "path" if command == "LC_RPATH" else "name"
+    pattern = rf"cmd {re.escape(command)}\s+cmdsize \d+\s+{field} (.*?) \(offset"
+    return re.findall(pattern, output)
 
 
 def system_path(path: str) -> bool:
@@ -60,7 +63,8 @@ def expand(value: str, binary: Path, executable: Path) -> Path | None:
 
 
 def audit(root: Path, binaries: list[Path]) -> None:
-    paths = {binary: rpaths(binary) for binary in binaries}
+    commands = {binary: tool("/usr/bin/otool", "-l", str(binary)) for binary in binaries}
+    paths = {binary: command_paths(output, "LC_RPATH") for binary, output in commands.items()}
     errors = []
     for binary in binaries:
         architectures = tool("/usr/bin/lipo", "-archs", str(binary)).split()
@@ -76,11 +80,10 @@ def audit(root: Path, binaries: list[Path]) -> None:
             resolved = expand(value, owner, executable)
             if resolved is None or (not resolved.is_relative_to(root) and not system_path(str(resolved))):
                 errors.append(f"External/unsupported rpath in {binary.relative_to(root)}: {value}")
-        dependencies = tool("/usr/bin/otool", "-L", str(binary))
-        for line in dependencies.splitlines():
-            if not line.startswith("\t"):
-                continue
-            dependency = line.strip().split(" (", 1)[0]
+        # LC_ID_DYLIB names the library itself; it is not a dependency to resolve.
+        dependencies = [path for command in DYLIB_LOAD_COMMANDS
+                        for path in command_paths(commands[binary], command)]
+        for dependency in dependencies:
             if system_path(dependency):
                 continue
             candidates = []
