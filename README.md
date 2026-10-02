@@ -12,8 +12,10 @@ Use Xcode 26+ and Python 3.12. The app is non-sandboxed. Developer environments 
 
 ```bash
 ./Packaging/build_backend_dev.sh
+export PIANO_TRANSCRIBE_PYTHON="$PWD/build/Backend/python/bin/python3.12"
+export PIANO_TRANSCRIBE_FFMPEG_BIN="$PWD/build/Backend/bin"
 ./script/test.sh
-./script/build_and_run.sh --verify
+./script/build_and_run.sh
 ./script/app_e2e.sh
 ```
 

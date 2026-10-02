@@ -69,6 +69,11 @@ from the installed distributions; missing evidence fails collection. Runtime
 dependency licenses and metadata are copied from the matching full Python
 archive, following the [standalone archive documentation](https://gregoryszorc.com/docs/python-build-standalone/main/distributions.html).
 
+The pinned wheels contain a few build-machine library paths. A narrow relocation
+recipe repairs only the verified paths, preserves actual library loads, and
+re-signs changed binaries before runtime imports. The recipe is included with
+license notices; download hashes describe the original wheels, not patched bytes.
+
 FFmpeg is built without GPL, nonfree, external autodetected libraries or network
 protocols. It includes only the audio decoders, filters and WAV/raw-float output
 needed by the runner. Both executables, the LGPL notice, unmodified source
