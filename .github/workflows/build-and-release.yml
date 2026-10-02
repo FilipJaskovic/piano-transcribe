@@ -108,6 +108,13 @@ jobs:
           path: dist/
           compression-level: 0
           if-no-files-found: error
+      - name: Preserve decoder configure diagnostics
+        if: failure()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: ffmpeg-configure-diagnostics
+          path: build/Backend/licenses/ffmpeg/CONFIGURE-FAILURE.log
+          if-no-files-found: ignore
       - name: Remove temporary signing keychain
         if: always()
         run: |
