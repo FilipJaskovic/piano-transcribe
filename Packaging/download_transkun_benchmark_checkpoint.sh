@@ -1,77 +1,53 @@
 #!/usr/bin/env bash
 set -euo pipefail
-
 ROOT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
-PYTHON_BIN="${PYTHON_BIN:-$ROOT_DIR/.venv/bin/python}"
-DEST_DIR="${DEST_DIR:-$ROOT_DIR/External/transkun-checkpoints/benchmark-v2}"
-FILE_ID="${TRANSKUN_BENCHMARK_V2_FILE_ID:-1pxGpO8eCdFxMRrXi_YUh7_uC0Ae26coB}"
-SOURCE_URL="https://drive.google.com/file/d/$FILE_ID/view?usp=drive_link"
-
-if [[ ! -x "$PYTHON_BIN" ]]; then
-  echo "Missing Python executable: $PYTHON_BIN" >&2
-  echo "Run ./Packaging/build_backend_dev.sh first, or set PYTHON_BIN." >&2
-  exit 1
-fi
-
-"$PYTHON_BIN" - "$DEST_DIR" "$FILE_ID" "$SOURCE_URL" <<'PY'
-from pathlib import Path
+PYTHON="${PYTHON_BIN:-$ROOT_DIR/build/Backend/python/bin/python3.12}"
+DEST="${DEST_DIR:-$ROOT_DIR/External/transkun-checkpoints/benchmark-v2}"
+[[ -x "$PYTHON" ]] || { echo 'Prepare the standalone backend first, or set PYTHON_BIN.' >&2; exit 1; }
+"$PYTHON" -I -B - "$ROOT_DIR/Backend/checkpoints.json" "$DEST" <<'PY'
 import hashlib
-import subprocess
+import json
+from pathlib import Path
+import shutil
 import sys
 import tempfile
+import urllib.request
 import zipfile
 
-dest = Path(sys.argv[1]).resolve()
-file_id = sys.argv[2]
-source_url = sys.argv[3]
-
-try:
-    import gdown
-except ImportError:
-    subprocess.check_call([sys.executable, "-m", "pip", "install", "gdown"])
-    import gdown
-
-with tempfile.TemporaryDirectory() as tmp_dir:
-    tmp = Path(tmp_dir)
-    archive = tmp / "checkpointTransformer.zip"
-    result = gdown.download(id=file_id, output=str(archive), quiet=False)
-    if result is None or not archive.exists():
-        raise RuntimeError("Could not download Transkun benchmark checkpoint.")
-
-    with zipfile.ZipFile(archive) as zf:
-        zf.extractall(tmp)
-
-    source = tmp / "checkpointMSimpler"
-    weight = source / "checkpoint.pt"
-    conf = source / "model.conf"
-    if not weight.exists() or not conf.exists():
-        raise RuntimeError("Downloaded benchmark checkpoint did not contain checkpoint.pt and model.conf.")
-
-    dest.mkdir(parents=True, exist_ok=True)
-    (dest / "checkpoint.pt").write_bytes(weight.read_bytes())
-    (dest / "model.conf").write_bytes(conf.read_bytes())
-
-def sha256(path: Path) -> str:
-    digest = hashlib.sha256()
-    with path.open("rb") as handle:
-        for chunk in iter(lambda: handle.read(1024 * 1024), b""):
-            digest.update(chunk)
-    return digest.hexdigest()
-
-lines = []
-for name in ["checkpoint.pt", "model.conf"]:
-    path = dest / name
-    lines.append(f"{sha256(path)}  {name}\n")
-(dest / "SHA256SUMS").write_text("".join(lines), encoding="utf-8")
-
-(dest / "SOURCE.md").write_text(
-    "# Transkun Benchmark V2 Checkpoint\n\n"
-    f"Source: {source_url}\n"
-    f"Google Drive file ID: `{file_id}`\n\n"
-    "This is the Transkun V2 checkpoint linked from the upstream Transkun "
-    "README model card table as `Transkun V2`.\n",
-    encoding="utf-8",
-)
-
-print(f"Transkun benchmark checkpoint ready: {dest}")
+manifest = json.loads(Path(sys.argv[1]).read_text())["benchmark-v2"]
+destination = Path(sys.argv[2]).resolve()
+source = 'https://drive.usercontent.google.com/download?id=1pxGpO8eCdFxMRrXi_YUh7_uC0Ae26coB&export=download&confirm=t'
+def valid_existing():
+    for kind in ('weight', 'config'):
+        path = destination / manifest[kind]
+        if not path.is_file():
+            return False
+        with path.open('rb') as stream:
+            if hashlib.file_digest(stream, 'sha256').hexdigest() != manifest[kind + 'SHA256']:
+                return False
+    return True
+if valid_existing():
+    print('Verified cached benchmark checkpoint:', destination)
+    sys.exit(0)
+with tempfile.TemporaryDirectory() as work:
+    temporary = Path(work)
+    archive = temporary / 'checkpoint.zip'
+    with urllib.request.urlopen(source, timeout=120) as response, archive.open('wb') as output:
+        shutil.copyfileobj(response, output)
+    with zipfile.ZipFile(archive) as container:
+        for kind in ('weight', 'config'):
+            name = manifest[kind]
+            path = temporary / name
+            # Read only the two expected members; never extract arbitrary archive paths.
+            with container.open('checkpointMSimpler/' + name) as member, path.open('wb') as output:
+                shutil.copyfileobj(member, output)
+            with path.open('rb') as stream:
+                actual = hashlib.file_digest(stream, 'sha256').hexdigest()
+            if actual != manifest[kind + 'SHA256']:
+                raise SystemExit('Downloaded benchmark ' + kind + ' failed its committed checksum.')
+    destination.mkdir(parents=True, exist_ok=True)
+    for kind in ('weight', 'config'):
+        shutil.copyfile(temporary / manifest[kind], destination / manifest[kind])
+    (destination / 'SOURCE.json').write_text(json.dumps(manifest, indent=2) + '\n')
+print('Verified benchmark checkpoint:', destination)
 PY

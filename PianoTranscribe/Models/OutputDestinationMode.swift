@@ -1,6 +1,6 @@
 import Foundation
 
-enum OutputDestinationMode: String, CaseIterable, Identifiable {
+enum OutputDestinationMode: String, CaseIterable, Identifiable, Sendable {
     case sourceFolder
     case customFolder
 

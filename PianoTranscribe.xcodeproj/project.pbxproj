@@ -13,7 +13,7 @@
 		000000000000000000000104 /* TranskunDevice.swift in Sources */ = {isa = PBXBuildFile; fileRef = 000000000000000000000204 /* TranskunDevice.swift */; };
 		000000000000000000000117 /* OutputDestinationMode.swift in Sources */ = {isa = PBXBuildFile; fileRef = 000000000000000000000217 /* OutputDestinationMode.swift */; };
 		000000000000000000000118 /* TranskunCheckpoint.swift in Sources */ = {isa = PBXBuildFile; fileRef = 000000000000000000000218 /* TranskunCheckpoint.swift */; };
-		000000000000000000000105 /* AudioPreprocessor.swift in Sources */ = {isa = PBXBuildFile; fileRef = 000000000000000000000205 /* AudioPreprocessor.swift */; };
+			000000000000000000000105 /* ProcessRunner.swift in Sources */ = {isa = PBXBuildFile; fileRef = 000000000000000000000205 /* ProcessRunner.swift */; };
 		000000000000000000000106 /* FileAccess.swift in Sources */ = {isa = PBXBuildFile; fileRef = 000000000000000000000206 /* FileAccess.swift */; };
 		000000000000000000000107 /* PythonBackendManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 000000000000000000000207 /* PythonBackendManager.swift */; };
 		000000000000000000000108 /* TranscriptionService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 000000000000000000000208 /* TranscriptionService.swift */; };
@@ -36,7 +36,7 @@
 		000000000000000000000204 /* TranskunDevice.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TranskunDevice.swift; sourceTree = "<group>"; };
 		000000000000000000000217 /* OutputDestinationMode.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OutputDestinationMode.swift; sourceTree = "<group>"; };
 		000000000000000000000218 /* TranskunCheckpoint.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TranskunCheckpoint.swift; sourceTree = "<group>"; };
-		000000000000000000000205 /* AudioPreprocessor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AudioPreprocessor.swift; sourceTree = "<group>"; };
+			000000000000000000000205 /* ProcessRunner.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProcessRunner.swift; sourceTree = "<group>"; };
 		000000000000000000000206 /* FileAccess.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FileAccess.swift; sourceTree = "<group>"; };
 		000000000000000000000207 /* PythonBackendManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PythonBackendManager.swift; sourceTree = "<group>"; };
 		000000000000000000000208 /* TranscriptionService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TranscriptionService.swift; sourceTree = "<group>"; };
@@ -101,7 +101,7 @@
 		000000000000000000000303 /* Services */ = {
 			isa = PBXGroup;
 			children = (
-				000000000000000000000205 /* AudioPreprocessor.swift */,
+					000000000000000000000205 /* ProcessRunner.swift */,
 				000000000000000000000206 /* FileAccess.swift */,
 				000000000000000000000207 /* PythonBackendManager.swift */,
 				000000000000000000000208 /* TranscriptionService.swift */,
@@ -219,7 +219,7 @@
 				000000000000000000000104 /* TranskunDevice.swift in Sources */,
 				000000000000000000000117 /* OutputDestinationMode.swift in Sources */,
 				000000000000000000000118 /* TranskunCheckpoint.swift in Sources */,
-				000000000000000000000105 /* AudioPreprocessor.swift in Sources */,
+					000000000000000000000105 /* ProcessRunner.swift in Sources */,
 				000000000000000000000106 /* FileAccess.swift in Sources */,
 				000000000000000000000107 /* PythonBackendManager.swift in Sources */,
 				000000000000000000000108 /* TranscriptionService.swift in Sources */,
@@ -355,13 +355,14 @@
 		000000000000000000000403 /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
-				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+					ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+					ARCHS = arm64;
 				ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS = YES;
 				CODE_SIGN_ENTITLEMENTS = Packaging/entitlements.plist;
 				CODE_SIGN_IDENTITY = "-";
 				CODE_SIGN_STYLE = Manual;
 				COMBINE_HIDPI_IMAGES = YES;
-				CURRENT_PROJECT_VERSION = 1;
+					CURRENT_PROJECT_VERSION = 2;
 				DEVELOPMENT_TEAM = "";
 				ENABLE_HARDENED_RUNTIME = YES;
 				ENABLE_PREVIEWS = YES;
@@ -376,10 +377,10 @@
 					"@executable_path/../Frameworks",
 				);
 				MACOSX_DEPLOYMENT_TARGET = 26.0;
-				MARKETING_VERSION = 0.1.0;
+					MARKETING_VERSION = 2.0.0;
 				PRODUCT_BUNDLE_IDENTIFIER = com.filipjaskovic.PianoTranscribe;
 				PRODUCT_NAME = "Piano transcribe";
-				SWIFT_STRICT_CONCURRENCY = minimal;
+					SWIFT_STRICT_CONCURRENCY = complete;
 				SWIFT_VERSION = 6.0;
 				WRAPPER_EXTENSION = app;
 			};
@@ -388,14 +389,15 @@
 		000000000000000000000404 /* Release */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
-				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+					ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+					ARCHS = arm64;
 				ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS = YES;
 				CODE_SIGN_ENTITLEMENTS = Packaging/entitlements.plist;
 				CODE_SIGN_IDENTITY = "-";
 				CODE_SIGN_INJECT_BASE_ENTITLEMENTS = NO;
 				CODE_SIGN_STYLE = Manual;
 				COMBINE_HIDPI_IMAGES = YES;
-				CURRENT_PROJECT_VERSION = 1;
+					CURRENT_PROJECT_VERSION = 2;
 				DEVELOPMENT_TEAM = "";
 				ENABLE_HARDENED_RUNTIME = YES;
 				GENERATE_INFOPLIST_FILE = YES;
@@ -409,10 +411,10 @@
 					"@executable_path/../Frameworks",
 				);
 				MACOSX_DEPLOYMENT_TARGET = 26.0;
-				MARKETING_VERSION = 0.1.0;
+					MARKETING_VERSION = 2.0.0;
 				PRODUCT_BUNDLE_IDENTIFIER = com.filipjaskovic.PianoTranscribe;
 				PRODUCT_NAME = "Piano transcribe";
-				SWIFT_STRICT_CONCURRENCY = minimal;
+					SWIFT_STRICT_CONCURRENCY = complete;
 				SWIFT_VERSION = 6.0;
 				WRAPPER_EXTENSION = app;
 			};

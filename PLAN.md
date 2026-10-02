@@ -1,5 +1,9 @@
 # Piano transcribe Plan: macOS 26+ Audio-to-MIDI Wrapper
 
+> Historical V1 implementation record. Active V2 work is tracked in `V2_PLAN.md`.
+> On 2026-10-02, Filip removed piano/orchestra separation from V2 and declined new model candidates.
+> V1 source and planning documents are backed up on GitHub branch `backup/v1-before-v2-2026-10-02`.
+
 Last updated: 2026-05-07
 
 This file is the persistent build plan for Piano transcribe, a native macOS wrapper around Transkun V2. Update the progress tracker as milestones are completed.

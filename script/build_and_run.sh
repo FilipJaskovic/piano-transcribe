@@ -15,8 +15,6 @@ APP_BINARY="$APP_BUNDLE/Contents/MacOS/$APP_NAME"
 
 cd "$ROOT_DIR"
 
-pkill -x "$APP_NAME" >/dev/null 2>&1 || true
-
 xcodebuild \
   -project "$PROJECT" \
   -scheme "$SCHEME" \
@@ -27,12 +25,12 @@ xcodebuild \
 open_app() {
   local open_args=(-n "$APP_BUNDLE" --env "PIANO_TRANSCRIBE_ROOT=$ROOT_DIR")
 
-  if [[ -n "${PIANO_TRANSCRIBE_PC_SEPARATION_ROOT:-}" ]]; then
-    open_args+=(--env "PIANO_TRANSCRIBE_PC_SEPARATION_ROOT=$PIANO_TRANSCRIBE_PC_SEPARATION_ROOT")
+  if [[ -n "${PIANO_TRANSCRIBE_PYTHON:-}" ]]; then
+    open_args+=(--env "PIANO_TRANSCRIBE_PYTHON=$PIANO_TRANSCRIBE_PYTHON")
   fi
 
-  if [[ -n "${PIANO_TRANSCRIBE_PC_SEPARATION_PYTHON:-}" ]]; then
-    open_args+=(--env "PIANO_TRANSCRIBE_PC_SEPARATION_PYTHON=$PIANO_TRANSCRIBE_PC_SEPARATION_PYTHON")
+  if [[ -n "${PIANO_TRANSCRIBE_FFMPEG_BIN:-}" ]]; then
+    open_args+=(--env "PIANO_TRANSCRIBE_FFMPEG_BIN=$PIANO_TRANSCRIBE_FFMPEG_BIN")
   fi
 
   if [[ -n "${PIANO_TRANSCRIBE_TRANSKUN_BENCHMARK_DIR:-}" ]]; then
@@ -49,8 +47,8 @@ case "$MODE" in
   --debug|debug)
     env \
       "PIANO_TRANSCRIBE_ROOT=$ROOT_DIR" \
-      "PIANO_TRANSCRIBE_PC_SEPARATION_ROOT=${PIANO_TRANSCRIBE_PC_SEPARATION_ROOT:-}" \
-      "PIANO_TRANSCRIBE_PC_SEPARATION_PYTHON=${PIANO_TRANSCRIBE_PC_SEPARATION_PYTHON:-}" \
+      "PIANO_TRANSCRIBE_PYTHON=${PIANO_TRANSCRIBE_PYTHON:-}" \
+      "PIANO_TRANSCRIBE_FFMPEG_BIN=${PIANO_TRANSCRIBE_FFMPEG_BIN:-}" \
       "PIANO_TRANSCRIBE_TRANSKUN_BENCHMARK_DIR=${PIANO_TRANSCRIBE_TRANSKUN_BENCHMARK_DIR:-}" \
       lldb -- "$APP_BINARY"
     ;;
@@ -62,13 +60,11 @@ case "$MODE" in
     open_app
     /usr/bin/log stream --info --style compact --predicate "subsystem == \"$BUNDLE_ID\""
     ;;
-  --verify|verify)
-    open_app
-    sleep 2
-    pgrep -x "$APP_NAME" >/dev/null
+  --build|build|--verify|verify)
+    [[ -x "$APP_BINARY" ]]
     ;;
   *)
-    echo "usage: $0 [run|--debug|--logs|--telemetry|--verify]" >&2
+    echo "usage: $0 [run|--debug|--logs|--telemetry|--build|--verify]" >&2
     exit 2
     ;;
 esac
