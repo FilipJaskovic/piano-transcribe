@@ -1,74 +1,46 @@
 #!/usr/bin/env python3
-import json
-import shutil
-import subprocess
+"""Checks the explicit offline runtime, decoders, and trusted model assets."""
+
+import argparse
+import contextlib
+import importlib.metadata
+import importlib.util
+from pathlib import Path
 import sys
+import traceback
 
-
-def command_works(command: str) -> bool:
-    path = shutil.which(command)
-    if path is None:
-        return False
-
-    try:
-        subprocess.run(
-            [path, "-version"],
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
-            check=True,
-        )
-        return True
-    except (OSError, subprocess.CalledProcessError):
-        return False
+spec = importlib.util.spec_from_file_location("piano_transcribe_runner", Path(__file__).with_name("transkun_runner.py"))
+if spec is None or spec.loader is None:
+    raise RuntimeError("The backend runner is missing.")
+runner = importlib.util.module_from_spec(spec)
+sys.modules[spec.name] = runner
+spec.loader.exec_module(runner)
 
 
 def main() -> int:
-    result = {
-        "python": sys.version,
-        "pythonExecutable": sys.executable,
-        "ffmpeg": shutil.which("ffmpeg"),
-        "ffmpegWorks": command_works("ffmpeg"),
-        "ffprobe": shutil.which("ffprobe"),
-        "ffprobeWorks": command_works("ffprobe"),
-    }
-
-    failures: list[str] = []
-
-    if sys.version_info[:2] != (3, 12):
-        failures.append("Python 3.12 is required.")
-
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--ffmpeg")
+    parser.add_argument("--ffprobe")
+    parser.add_argument("--checkpoint", default="packaged-default", choices=["packaged-default", "benchmark-v2"])
+    parser.add_argument("--checkpoint-dir")
+    args = parser.parse_args()
     try:
-        import torch
-
-        result["torch"] = torch.__version__
-        result["mpsAvailable"] = bool(
-            hasattr(torch.backends, "mps") and torch.backends.mps.is_available()
-        )
+        if sys.version_info[:2] != (3, 12):
+            raise runner.BackendError("runtime_invalid", "Python 3.12 is required.")
+        with contextlib.redirect_stdout(sys.stderr):
+            ffmpeg = runner.resolve_binary("ffmpeg", args.ffmpeg)
+            ffprobe = runner.resolve_binary("ffprobe", args.ffprobe)
+            _, device = runner.load_model(args.checkpoint, args.checkpoint_dir, "cpu")
+        runner.emit("result", python=sys.version, pythonExecutable=sys.executable,
+             torch=importlib.metadata.version("torch"), transkun=importlib.metadata.version("transkun"),
+             ffmpeg=str(ffmpeg), ffprobe=str(ffprobe), checkpoint=args.checkpoint, device=device, ok=True)
+        return 0
     except Exception as exc:
-        failures.append(f"Could not import torch: {exc}")
-
-    try:
-        import transkun
-
-        result["transkun"] = transkun.__file__
-    except Exception as exc:
-        failures.append(f"Could not import transkun: {exc}")
-
-    try:
-        import imageio_ffmpeg
-
-        result["imageioFfmpeg"] = imageio_ffmpeg.get_ffmpeg_exe()
-    except Exception as exc:
-        result["imageioFfmpeg"] = None
-        failures.append(f"Could not resolve imageio-ffmpeg fallback: {exc}")
-
-    result["ok"] = not failures
-    result["failures"] = failures
-
-    print(json.dumps(result, indent=2, sort_keys=True))
-
-    return 0 if not failures else 1
+        runner.emit("error", code=exc.code if isinstance(exc, runner.BackendError) else "runtime_invalid",
+             message=str(exc), ok=False)
+        traceback.print_exc(file=sys.stderr)
+        return 1
 
 
 if __name__ == "__main__":
-    raise SystemExit(main())
+    sys.exit(main())

@@ -1,19 +1,19 @@
 import Foundation
 
-enum TranscriptionStatus: Equatable {
+enum TranscriptionStatus: Equatable, Sendable {
     case idle
     case preparingBackend
     case copyingInput
-    case separatingPiano
     case transcribing
     case savingOutput
+    case cancelling
     case completed(URL)
     case failed(String)
     case cancelled
 
     var isInProgress: Bool {
         switch self {
-        case .preparingBackend, .copyingInput, .separatingPiano, .transcribing, .savingOutput:
+        case .preparingBackend, .copyingInput, .transcribing, .savingOutput, .cancelling:
             true
         case .idle, .completed, .failed, .cancelled:
             false
@@ -28,12 +28,12 @@ enum TranscriptionStatus: Equatable {
             "Preparing backend"
         case .copyingInput:
             "Preparing audio"
-        case .separatingPiano:
-            "Separating piano"
         case .transcribing:
             "Transcribing"
         case .savingOutput:
             "Saving MIDI"
+        case .cancelling:
+            "Stopping"
         case .completed:
             "Saved"
         case .failed:

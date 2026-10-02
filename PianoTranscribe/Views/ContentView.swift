@@ -17,7 +17,7 @@ struct ContentView: View {
 
             controlBar
 
-            StatusView(status: model.status)
+            StatusView(status: model.status, progress: model.progress)
 
             LogView(lines: model.logLines, isExpanded: $model.isLogExpanded)
         }
@@ -30,7 +30,6 @@ struct ContentView: View {
             onCompletion: model.handleImporterResult(_:)
         )
         .task {
-            model.refreshPianoSeparationAvailability()
             model.refreshBenchmarkCheckpointAvailability()
             model.runStartupAutomationIfNeeded()
         }
@@ -62,6 +61,7 @@ struct ContentView: View {
                 Label("Choose Audio", systemImage: "folder")
             }
             .keyboardShortcut("o", modifiers: [.command])
+            .disabled(model.isRunning)
 
             Picker("Device", selection: $model.selectedDevice) {
                 ForEach(TranskunDevice.allCases) { device in
@@ -70,17 +70,7 @@ struct ContentView: View {
             }
             .labelsHidden()
             .frame(width: 240)
-
-            Toggle(isOn: $model.isPianoSeparationEnabled) {
-                Label("Separate piano", systemImage: "pianokeys.inverse")
-            }
-            .toggleStyle(.checkbox)
-            .disabled(!model.isPianoSeparationAvailable)
-            .help(
-                model.isPianoSeparationAvailable
-                    ? "Run the bundled pc-separation backend before transcription."
-                    : model.pianoSeparationAvailabilityMessage
-            )
+            .disabled(model.isRunning)
 
             Spacer()
 

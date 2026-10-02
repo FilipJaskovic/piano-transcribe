@@ -1,6 +1,6 @@
 import Foundation
 
-enum TranskunDevice: String, CaseIterable, Identifiable {
+enum TranskunDevice: String, CaseIterable, Identifiable, Sendable {
     case cpu
     case mpsExperimental = "mps"
 

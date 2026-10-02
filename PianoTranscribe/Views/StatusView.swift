@@ -2,6 +2,7 @@ import SwiftUI
 
 struct StatusView: View {
     let status: TranscriptionStatus
+    var progress: Double? = nil
 
     var body: some View {
         HStack(spacing: 10) {
@@ -21,9 +22,9 @@ struct StatusView: View {
 
             Spacer()
 
-            if status.isInProgress {
-                ProgressView()
-                    .controlSize(.small)
+            if status.isInProgress, let progress {
+                ProgressView(value: progress)
+                    .frame(width: 120)
             }
         }
         .padding(14)
@@ -45,7 +46,7 @@ struct StatusView: View {
             case .idle:
                 Image(systemName: "music.note")
                     .foregroundStyle(.secondary)
-            case .preparingBackend, .copyingInput, .separatingPiano, .transcribing, .savingOutput:
+            case .preparingBackend, .copyingInput, .transcribing, .savingOutput, .cancelling:
                 Image(systemName: "gearshape.2")
                     .foregroundStyle(.secondary)
             }
@@ -62,8 +63,6 @@ struct StatusView: View {
             "Checking the local Python backend."
         case .copyingInput:
             "Copying the selected file into a job folder."
-        case .separatingPiano:
-            "Running the optional piano/orchestra separation backend."
         case .transcribing:
             "Running Transkun V2."
         case .savingOutput:
@@ -74,6 +73,8 @@ struct StatusView: View {
             message
         case .cancelled:
             "The current job was stopped."
+        case .cancelling:
+            "Waiting for the backend to stop."
         }
     }
 }

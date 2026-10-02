@@ -1,91 +1,47 @@
 #!/usr/bin/env bash
 set -euo pipefail
-
 ROOT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
-APP_NAME="Piano transcribe"
-SCHEME="PianoTranscribe"
-PROJECT="PianoTranscribe.xcodeproj"
-CONFIGURATION="${CONFIGURATION:-Release}"
-VERSION="${VERSION:-0.1.0}"
-DERIVED_DATA="$ROOT_DIR/build/DerivedData"
-APP_BUNDLE="$DERIVED_DATA/Build/Products/$CONFIGURATION/$APP_NAME.app"
-DIST_DIR="$ROOT_DIR/dist"
-DMG_PATH="$DIST_DIR/piano-transcribe-$VERSION.dmg"
-ALLOW_DEV_VENV="0"
-SKIP_NOTARIZE="0"
-
-usage() {
-  cat >&2 <<USAGE
-usage: $0 [--dev-venv-ok] [--skip-notarize]
-
-Builds the macOS app, stages the backend, signs the bundle, and creates a DMG.
-
-Environment:
-  VERSION                 DMG version suffix. Default: 0.1.0
-  CONFIGURATION           Xcode configuration. Default: Release
-  SIGN_IDENTITY           Developer ID Application identity. Default: ad-hoc
-  DEVELOPMENT_TEAM        Optional Xcode development team
-  APPLE_ID                Notarization Apple ID
-  APPLE_TEAM_ID           Notarization team ID
-  APPLE_APP_PASSWORD      App-specific password
-USAGE
-}
-
-while [[ $# -gt 0 ]]; do
-  case "$1" in
-    --dev-venv-ok)
-      ALLOW_DEV_VENV="1"
-      shift
-      ;;
-    --skip-notarize)
-      SKIP_NOTARIZE="1"
-      shift
-      ;;
-    -h|--help)
-      usage
-      exit 0
-      ;;
-    *)
-      usage
-      exit 2
-      ;;
-  esac
-done
-
+ALLOW_UNSIGNED=0
+if [[ $# == 1 && "$1" == '--allow-unsigned' ]]; then
+  ALLOW_UNSIGNED=1
+elif [[ $# != 0 ]]; then
+  echo "usage: $0 [--allow-unsigned]" >&2
+  exit 2
+fi
+VERSION="${VERSION:-2.0.0}"
+[[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || { echo 'VERSION must be x.y.z.' >&2; exit 2; }
+if [[ "$ALLOW_UNSIGNED" == 0 ]]; then
+  : "${SIGN_IDENTITY:?Developer ID identity required}" "${APPLE_ID:?Apple ID required}" \
+    "${APPLE_TEAM_ID:?Apple team required}" "${APPLE_APP_PASSWORD:?App-specific password required}"
+  [[ "$SIGN_IDENTITY" == 'Developer ID Application:'* ]] || { echo 'Expected Developer ID Application identity.' >&2; exit 1; }
+fi
 cd "$ROOT_DIR"
-mkdir -p "$DIST_DIR"
-
-xcodebuild \
-  -project "$PROJECT" \
-  -scheme "$SCHEME" \
-  -configuration "$CONFIGURATION" \
-  -derivedDataPath "$DERIVED_DATA" \
-  CODE_SIGN_STYLE=Manual \
-  CODE_SIGN_IDENTITY="${SIGN_IDENTITY:--}" \
-  DEVELOPMENT_TEAM="${DEVELOPMENT_TEAM:-}" \
-  CODE_SIGN_INJECT_BASE_ENTITLEMENTS=NO \
-  build
-
-backend_args=(--app "$APP_BUNDLE")
-if [[ "$ALLOW_DEV_VENV" == "1" ]]; then
-  backend_args+=(--dev-venv-ok)
+mkdir -p build dist
+APP="$ROOT_DIR/build/DerivedData/Build/Products/Release/Piano transcribe.app"
+xcodebuild -project PianoTranscribe.xcodeproj -scheme PianoTranscribe -configuration Release \
+  -derivedDataPath "$ROOT_DIR/build/DerivedData" ARCHS=arm64 CODE_SIGNING_ALLOWED=NO \
+  MARKETING_VERSION="$VERSION" CURRENT_PROJECT_VERSION="${BUILD_NUMBER:-2}" build
+"$ROOT_DIR/Packaging/build_backend_release.sh" --app "$APP"
+SIGN_ARGS=()
+SUFFIX=''
+if [[ "$ALLOW_UNSIGNED" == 1 ]]; then
+  SIGN_ARGS+=(--allow-unsigned)
+  SUFFIX='-unsigned'
 fi
-"$ROOT_DIR/Packaging/build_backend_release.sh" "${backend_args[@]}"
-
-"$ROOT_DIR/Packaging/sign_app.sh" "$APP_BUNDLE"
-
-rm -f "$DMG_PATH"
-hdiutil create \
-  -volname "$APP_NAME" \
-  -srcfolder "$APP_BUNDLE" \
-  -ov \
-  -format UDZO \
-  "$DMG_PATH"
-
-if [[ "$SKIP_NOTARIZE" != "1" && -n "${APPLE_ID:-}" && -n "${APPLE_TEAM_ID:-}" && -n "${APPLE_APP_PASSWORD:-}" ]]; then
-  "$ROOT_DIR/Packaging/notarize.sh" "$DMG_PATH"
-else
-  echo "Skipping notarization. Provide Apple credentials or pass --skip-notarize explicitly."
+"$ROOT_DIR/Packaging/sign_app.sh" "$APP" "${SIGN_ARGS[@]}"
+if [[ "$ALLOW_UNSIGNED" == 0 ]]; then
+  "$ROOT_DIR/Packaging/notarize.sh" "$APP"
 fi
-
-echo "DMG ready: $DMG_PATH"
+"$ROOT_DIR/Packaging/check_release_readiness.sh" "$APP" "${SIGN_ARGS[@]}"
+DMG="$ROOT_DIR/dist/piano-transcribe-$VERSION-arm64$SUFFIX.dmg"
+STAGING="$(mktemp -d "$ROOT_DIR/build/dmg.XXXXXX")"
+trap 'rm -rf "$STAGING"' EXIT
+ditto "$APP" "$STAGING/Piano transcribe.app"
+ln -s /Applications "$STAGING/Applications"
+hdiutil create -volname 'Piano transcribe' -srcfolder "$STAGING" -ov -format UDZO "$DMG"
+if [[ "$ALLOW_UNSIGNED" == 0 ]]; then
+  codesign --sign "$SIGN_IDENTITY" --timestamp "$DMG"
+  "$ROOT_DIR/Packaging/notarize.sh" "$DMG"
+fi
+(cd "$ROOT_DIR/dist" && shasum -a 256 "$(basename "$DMG")" > "$(basename "$DMG").sha256")
+echo "DMG ready: $DMG"

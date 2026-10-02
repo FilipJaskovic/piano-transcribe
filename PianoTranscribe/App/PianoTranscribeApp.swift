@@ -7,8 +7,9 @@ struct PianoTranscribeApp: App {
     @State private var model = AppModel()
 
     var body: some Scene {
-        WindowGroup {
+        Window("Piano transcribe", id: "main") {
             ContentView(model: model)
+                .onAppear { appDelegate.model = model }
         }
         .windowResizability(.contentMinSize)
         .commands {
@@ -17,6 +18,7 @@ struct PianoTranscribeApp: App {
                     model.presentImporter()
                 }
                 .keyboardShortcut("o", modifiers: [.command])
+                .disabled(model.isRunning)
 
                 Button("Cancel Transcription") {
                     model.cancel()
@@ -34,8 +36,23 @@ struct PianoTranscribeApp: App {
 }
 
 final class AppDelegate: NSObject, NSApplicationDelegate {
+    weak var model: AppModel?
+    private var isStopping = false
+
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.setActivationPolicy(.regular)
         NSApp.activate(ignoringOtherApps: true)
+    }
+
+    func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
+        guard let model, model.isRunning else { return .terminateNow }
+        if !isStopping {
+            isStopping = true
+            Task { @MainActor in
+                await model.stop()
+                sender.reply(toApplicationShouldTerminate: true)
+            }
+        }
+        return .terminateLater
     }
 }

@@ -1,6 +1,6 @@
 import Foundation
 
-enum TranskunCheckpoint: String, CaseIterable, Identifiable {
+enum TranskunCheckpoint: String, CaseIterable, Identifiable, Sendable {
     case packagedDefault = "packaged-default"
     case benchmarkV2 = "benchmark-v2"
 

@@ -1,0 +1,7 @@
+# Build tools for the few upstream packages distributed as source archives.
+setuptools==81.0.0 --hash=sha256:fdd925d5c5d9f62e4b74b30d6dd7828ce236fd6ed998a08d81de62ce5a6310d6
+wheel==0.47.0 --hash=sha256:212281cab4dff978f6cedd499cd893e1f620791ca6ff7107cf270781e587eced
+packaging==26.2 --hash=sha256:5fc45236b9446107ff2415ce77c807cee2862cb6fac22b8a73826d0693b0980e
+numpy==2.4.4 \
+    --hash=sha256:23cbfd4c17357c81021f21540da84ee282b9c8fba38a03b7b9d09ba6b951421e \
+    --hash=sha256:8b3b60bb7cba2c8c81837661c488637eee696f59a877788a396d33150c35d842

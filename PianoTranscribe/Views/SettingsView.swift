@@ -25,25 +25,6 @@ struct SettingsView: View {
                     .font(.caption)
                     .foregroundStyle(.secondary)
 
-                if !model.isBenchmarkCheckpointAvailable {
-                    Text(model.benchmarkCheckpointAvailabilityMessage)
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
-
-                Toggle("Separate piano from orchestra", isOn: $model.isPianoSeparationEnabled)
-                    .disabled(!model.isPianoSeparationAvailable)
-
-                Text(model.isPianoSeparationAvailable ? "Uses the bundled HDMC pc-separation model." : model.pianoSeparationAvailabilityMessage)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-
-                Toggle("Save separated WAV stems", isOn: $model.shouldSaveSeparatedStems)
-                    .disabled(!model.isPianoSeparationAvailable || !model.isPianoSeparationEnabled)
-
-                Text("When separation is enabled, saves piano and orchestra WAV files beside the MIDI.")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
             }
 
             Section("Output") {
@@ -85,6 +66,7 @@ struct SettingsView: View {
         }
         .formStyle(.grouped)
         .padding()
+        .disabled(model.isRunning)
     }
 }
 

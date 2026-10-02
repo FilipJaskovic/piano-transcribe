@@ -1,124 +1,96 @@
-# Packaging And Release Notes
+# Packaging Piano transcribe V2
 
-The project is set up so GitHub can own build artifacts and tagged releases.
+V2 release artifacts target Apple Silicon and macOS 26 or later. The app bundles
+Transkun, its packaged-default and existing benchmark checkpoints, CPython 3.12, and local-only FFmpeg and
+ffprobe. There is no separator, user-installed Python, Homebrew requirement, or
+first-run model download.
 
-## Developer DMG
+## Build an unsigned testing artifact
 
-This creates a local unsigned/ad-hoc signed DMG using the existing Transkun
-`.venv` plus the separate pc-separation environment/assets:
-
-```bash
-./Packaging/build_backend_dev.sh
-PYTHON_BIN=python3.10 ./Packaging/build_pc_separation_release.sh
-./Packaging/package_dmg.sh --dev-venv-ok --skip-notarize
-```
-
-Release packaging also stages the upstream Transkun model-card benchmark
-checkpoint. For local testing before packaging, download it with:
+Run on an Apple Silicon Mac with Xcode 26 and at least 8 GiB free:
 
 ```bash
-./Packaging/download_transkun_benchmark_checkpoint.sh
+./Packaging/package_dmg.sh --allow-unsigned
 ```
 
-That writes `checkpoint.pt` and `model.conf` under
-`External/transkun-checkpoints/benchmark-v2`.
+The filename includes `-unsigned`. It is ad-hoc signed for local executable
+integrity, not Developer ID signed or notarized. Do not describe this channel as
+Gatekeeper-ready. No Developer ID certificate is needed for this explicit mode.
 
-The developer DMG is useful for validating the app bundle shape, but it is not a
-final redistributable release because the staged Python runtime may still depend
-on machine-local framework paths.
+## Build a notarized artifact
 
-## Backend Health Check
-
-Use the doctor before spending time on packaging:
+Set `SIGN_IDENTITY` to a Developer ID Application identity and provide `APPLE_ID`,
+`APPLE_TEAM_ID`, and `APPLE_APP_PASSWORD`. The certificate must already be
+installed locally. Then run:
 
 ```bash
-. .venv/bin/activate
-python Backend/doctor.py
-python Backend/smoke_test.py
-./script/app_e2e.sh
+./Packaging/package_dmg.sh
 ```
 
-`doctor.py` verifies Python 3.12, imports `torch` and `transkun`, reports MPS
-availability, and detects broken `ffmpeg`/`ffprobe` binaries.
+Missing identity or credentials fail before backend downloads. The pipeline signs
+nested Mach-O files individually, signs the app, requires Apple's `Accepted`
+notarization result, staples and validates both the app and final DMG, and checks
+Gatekeeper. `VERSION` defaults to `2.0.0`; `BUILD_NUMBER` defaults to `2`.
 
-## Optional Piano/Orchestra Separation
+## GitHub Actions
 
-The app can run an optional pc-separation pre-step before Transkun. That backend
-is intentionally separate from the Transkun runtime because pc-separation has a
-different dependency profile.
+Pull requests and main pushes run focused tests and build the Swift app. Manual
+runs and version tags also build the standalone backend and DMG, then download
+that artifact in a separate job with no source checkout or Python setup. The
+consumer relocates the app and runs bundle validation and E2E with networking
+denied. Production requires these repository secrets:
 
-Release asset setup:
+- `SIGN_IDENTITY`
+- `SIGNING_CERTIFICATE_P12_BASE64`
+- `SIGNING_CERTIFICATE_PASSWORD`
+- `APPLE_ID`
+- `APPLE_TEAM_ID`
+- `APPLE_APP_PASSWORD`
 
-```bash
-PYTHON_BIN=python3.10 ./Packaging/build_pc_separation_release.sh
-export PIANO_TRANSCRIBE_PC_SEPARATION_ROOT="$PWD/External/pc-separation"
-export PIANO_TRANSCRIBE_PC_SEPARATION_PYTHON="$PWD/.pc-separation-env/bin/python"
-"$PIANO_TRANSCRIBE_PC_SEPARATION_PYTHON" Backend/pc_separator_smoke_test.py
-```
+A manual run can explicitly select `allow_unsigned`. Version tags cannot silently
+fall back to unsigned packaging. Workflows upload candidate artifacts; they do
+not automatically create or publish a GitHub Release. Publish only after the
+independent consumer passes and a human authorizes the release.
 
-For a quick configuration check:
+## Pinned inputs and licenses
 
-```bash
-"$PIANO_TRANSCRIBE_PC_SEPARATION_PYTHON" Backend/pc_separator_runner.py \
-  --doctor \
-  --repo "$PIANO_TRANSCRIBE_PC_SEPARATION_ROOT"
-```
+`sources.env` pins official standalone CPython archives and the official FFmpeg
+source archive to expected SHA256 values. Runtime metadata comes from the
+[official standalone release API](https://api.github.com/repos/astral-sh/python-build-standalone/releases/tags/20261001).
+The FFmpeg source checksum was cross-checked against the maintained
+[Homebrew source recipe](https://github.com/Homebrew/homebrew-core/blob/master/Formula/f/ffmpeg@7.rb);
+we build from that source, not Homebrew's GPL-enabled binary.
 
-The release packaging path stages only the HDMC separator source/config and
-`checkpoints/HDMC20_R_H_HU_HUS/hdemucs_best.pth` into the app bundle. The
-script writes SHA256 and provenance notes next to the staged upstream checkout.
+`Backend/requirements-transkun.lock` locks distribution versions and upstream
+artifact hashes. Source-only Python packages use the separately pinned build
+tools without dynamic build-isolation downloads. The pinned standalone runtime
+supplies the fixed pip version. Package legal texts and metadata are collected
+from the installed distributions; missing evidence fails collection. Runtime
+dependency licenses and metadata are copied from the matching full Python
+archive, following the [standalone archive documentation](https://gregoryszorc.com/docs/python-build-standalone/main/distributions.html).
 
-App E2E with the separator enabled:
+FFmpeg is built without GPL, nonfree, external autodetected libraries or network
+protocols. It includes only the audio decoders, filters and WAV/raw-float output
+needed by the runner. Both executables, the LGPL notice, unmodified source
+archive, build configuration and recipe are bundled. See
+[FFmpeg's licensing guidance](https://ffmpeg.org/legal.html).
 
-```bash
-PIANO_TRANSCRIBE_TEST_SEPARATOR=1 \
-PIANO_TRANSCRIBE_PC_SEPARATION_ROOT="$PWD/External/pc-separation" \
-PIANO_TRANSCRIBE_PC_SEPARATION_PYTHON="$PWD/.pc-separation-env/bin/python" \
-./script/app_e2e.sh
-```
+`macho_audit.py` rejects non-arm64 binaries, broken/escaping symlinks, and
+unresolved dependencies or rpaths outside the app and macOS system libraries.
+This prevents builder Homebrew/toolcache paths from masquerading as portability.
 
-## Public Release Requirements
+## Optional existing benchmark checkpoint
 
-Before public release:
+The packaged-default model remains the default. Production CI bundles the existing
+benchmark V2 option with `DOWNLOAD_BENCHMARK=1` and tests both selections. For local
+builds, a benchmark V2 pair can be supplied with `TRANSKUN_BENCHMARK_DIR`; staging verifies both files against
+`Backend/checkpoints.json`. To fetch that existing upstream checkpoint at build
+time, run `download_transkun_benchmark_checkpoint.sh`. It validates the committed
+weight/config hashes before accepting files. No application startup downloads
+are performed.
 
-- Replace the developer `.venv` backend staging with a standalone Python 3.12 runtime.
-- Replace the developer `.pc-separation-env` staging with a standalone Python 3.10 runtime.
-- Bundle a vetted LGPL-compatible `ffmpeg` and `ffprobe` build.
-- Complete `Contents/Resources/Backend/licenses`.
-- Sign every nested executable and dynamic library.
-- Sign the app with a Developer ID Application certificate.
-- Notarize the DMG.
+## Verification limits
 
-## Signing
-
-Set the signing identity before packaging:
-
-```bash
-export SIGN_IDENTITY="Developer ID Application: YOUR NAME (TEAMID)"
-export DEVELOPMENT_TEAM="TEAMID"
-```
-
-Check an app bundle before distribution:
-
-```bash
-./Packaging/check_release_readiness.sh "build/DerivedData/Build/Products/Release/Piano transcribe.app"
-```
-
-## Notarization
-
-Set Apple notarization credentials:
-
-```bash
-export APPLE_ID="you@example.com"
-export APPLE_TEAM_ID="TEAMID"
-export APPLE_APP_PASSWORD="xxxx-xxxx-xxxx-xxxx"
-```
-
-Then run:
-
-```bash
-./Packaging/package_dmg.sh --dev-venv-ok
-```
-
-For the final release, remove `--dev-venv-ok` after the standalone runtime flows
-for both Transkun and pc-separation are implemented.
+Writing these scripts or running focused tests does not establish release
+readiness. The full standalone build, independent relocated offline E2E, and
+selected signing/notarization path must run successfully on the final artifact.

@@ -1,30 +1,29 @@
 #!/usr/bin/env bash
 set -euo pipefail
-
-ARTIFACT="${1:-}"
-
-if [[ -z "$ARTIFACT" || ! -f "$ARTIFACT" ]]; then
-  echo "usage: $0 <artifact.dmg|artifact.zip>" >&2
+ARTIFACT="${1:?App bundle or DMG required}"
+: "${APPLE_ID:?Apple ID required}" "${APPLE_TEAM_ID:?Apple team required}" "${APPLE_APP_PASSWORD:?App-specific password required}"
+WORK="$(mktemp -d)"
+trap 'rm -rf "$WORK"' EXIT
+SUBMISSION="$ARTIFACT"
+if [[ -d "$ARTIFACT/Contents" ]]; then
+  SUBMISSION="$WORK/application.zip"
+  ditto -c -k --keepParent "$ARTIFACT" "$SUBMISSION"
+elif [[ ! -f "$ARTIFACT" ]]; then
+  echo 'Notarization artifact does not exist.' >&2
   exit 2
 fi
-
-if [[ -z "${APPLE_ID:-}" || -z "${APPLE_TEAM_ID:-}" || -z "${APPLE_APP_PASSWORD:-}" ]]; then
-  cat >&2 <<'MESSAGE'
-Missing notarization credentials.
-
-Set:
-  APPLE_ID
-  APPLE_TEAM_ID
-  APPLE_APP_PASSWORD
-MESSAGE
+xcrun notarytool submit "$SUBMISSION" --apple-id "$APPLE_ID" --team-id "$APPLE_TEAM_ID" \
+  --password "$APPLE_APP_PASSWORD" --wait --output-format json > "$WORK/result.json"
+STATUS="$(/usr/bin/plutil -extract status raw -o - "$WORK/result.json")"
+if [[ "$STATUS" != 'Accepted' ]]; then
+  cat "$WORK/result.json" >&2
+  echo 'Apple did not accept the notarization submission.' >&2
   exit 1
 fi
-
-xcrun notarytool submit "$ARTIFACT" \
-  --apple-id "$APPLE_ID" \
-  --team-id "$APPLE_TEAM_ID" \
-  --password "$APPLE_APP_PASSWORD" \
-  --wait
-
 xcrun stapler staple "$ARTIFACT"
-spctl --assess --type open --verbose=4 "$ARTIFACT"
+xcrun stapler validate "$ARTIFACT"
+if [[ -d "$ARTIFACT/Contents" ]]; then
+  spctl --assess --type execute --verbose=4 "$ARTIFACT"
+else
+  spctl --assess --type open --context context:primary-signature --verbose=4 "$ARTIFACT"
+fi

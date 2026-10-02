@@ -6,492 +6,317 @@ import UniformTypeIdentifiers
 @MainActor
 @Observable
 final class AppModel {
-    var status: TranscriptionStatus = .idle
-    var selectedDevice: TranskunDevice = .cpu
-    var selectedCheckpoint: TranskunCheckpoint = .packagedDefault {
-        didSet {
-            UserDefaults.standard.set(selectedCheckpoint.rawValue, forKey: SettingsKeys.selectedCheckpoint)
-        }
-    }
-    var isPianoSeparationEnabled = false
-    var shouldSaveSeparatedStems = true {
-        didSet {
-            UserDefaults.standard.set(shouldSaveSeparatedStems, forKey: SettingsKeys.shouldSaveSeparatedStems)
-        }
-    }
-    var outputDestinationMode: OutputDestinationMode = .sourceFolder {
-        didSet {
-            UserDefaults.standard.set(outputDestinationMode.rawValue, forKey: SettingsKeys.outputDestinationMode)
-        }
-    }
-    var customOutputFolderURL: URL? {
-        didSet {
-            if let path = customOutputFolderURL?.path {
-                UserDefaults.standard.set(path, forKey: SettingsKeys.customOutputFolderPath)
-            } else {
-                UserDefaults.standard.removeObject(forKey: SettingsKeys.customOutputFolderPath)
-            }
-        }
-    }
-    var logLines: [String] = []
-    var isImporterPresented = false
-    var isDropTargeted = false
-    var isLogExpanded = true
-    var isPianoSeparationAvailable = false
-    var pianoSeparationAvailabilityMessage = "Separator backend not installed."
-    var pianoSeparationAvailabilityDetails: String?
-    var isBenchmarkCheckpointAvailable = false
-    var benchmarkCheckpointAvailabilityMessage = "Benchmark checkpoint not installed."
-    var benchmarkCheckpointAvailabilityDetails: String?
-
+    private let preferences: UserDefaults?
     private let transcriptionService = TranscriptionService()
     private var transcriptionTask: Task<Void, Never>?
+    private var activeJobID: UUID?
     private var startupAutomationHandled = false
 
+    private(set) var status: TranscriptionStatus = .idle
+    private(set) var progress: Double?
+    private(set) var logLines: [String] = []
+    private(set) var isBenchmarkCheckpointAvailable = false
+    var isImporterPresented = false
+    var isDropTargeted = false
+    var isLogExpanded = false
+    var selectedDevice: TranskunDevice = .cpu {
+        didSet { preferences?.set(selectedDevice.rawValue, forKey: "selectedDevice") }
+    }
+    var selectedCheckpoint: TranskunCheckpoint = .packagedDefault {
+        didSet { preferences?.set(selectedCheckpoint.rawValue, forKey: "selectedCheckpoint") }
+    }
+    var outputDestinationMode: OutputDestinationMode = .sourceFolder {
+        didSet { preferences?.set(outputDestinationMode.rawValue, forKey: "outputDestinationMode") }
+    }
+    var customOutputFolderURL: URL? {
+        didSet { preferences?.set(customOutputFolderURL?.path, forKey: "customOutputFolderPath") }
+    }
+
     init() {
-        let defaults = UserDefaults.standard
-
-        if let rawMode = defaults.string(forKey: SettingsKeys.outputDestinationMode),
-           let mode = OutputDestinationMode(rawValue: rawMode) {
-            outputDestinationMode = mode
+        preferences = ProcessInfo.processInfo.environment["PIANO_TRANSCRIBE_TEST_MODE"] == "1"
+            ? nil : .standard
+        if let raw = preferences?.string(forKey: "selectedDevice"), let value = TranskunDevice(rawValue: raw) {
+            selectedDevice = value
         }
-
-        if let path = defaults.string(forKey: SettingsKeys.customOutputFolderPath), !path.isEmpty {
+        if let raw = preferences?.string(forKey: "selectedCheckpoint"), let value = TranskunCheckpoint(rawValue: raw) {
+            selectedCheckpoint = value
+        }
+        if let raw = preferences?.string(forKey: "outputDestinationMode"), let value = OutputDestinationMode(rawValue: raw) {
+            outputDestinationMode = value
+        }
+        if let path = preferences?.string(forKey: "customOutputFolderPath"), !path.isEmpty {
             customOutputFolderURL = URL(fileURLWithPath: path, isDirectory: true)
         }
-
-        if defaults.object(forKey: SettingsKeys.shouldSaveSeparatedStems) != nil {
-            shouldSaveSeparatedStems = defaults.bool(forKey: SettingsKeys.shouldSaveSeparatedStems)
-        }
-
-        if let rawCheckpoint = defaults.string(forKey: SettingsKeys.selectedCheckpoint),
-           let checkpoint = TranskunCheckpoint(rawValue: rawCheckpoint) {
-            selectedCheckpoint = checkpoint
-        }
-
-        refreshPianoSeparationAvailability()
         refreshBenchmarkCheckpointAvailability()
     }
 
-    var canCancel: Bool {
-        status.isInProgress
-    }
-
-    var customOutputFolderPath: String {
-        customOutputFolderURL?.path ?? "No folder selected"
-    }
+    var isRunning: Bool { activeJobID != nil }
+    var canCancel: Bool { isRunning && status != .cancelling }
+    var customOutputFolderPath: String { customOutputFolderURL?.path ?? "No folder selected" }
 
     func presentImporter() {
+        guard !isRunning else { return }
         isImporterPresented = true
     }
 
     func chooseCustomOutputFolder() {
+        guard !isRunning else { return }
         let panel = NSOpenPanel()
         panel.canChooseFiles = false
         panel.canChooseDirectories = true
         panel.allowsMultipleSelection = false
         panel.canCreateDirectories = true
         panel.prompt = "Choose"
-        panel.message = "Choose where Piano transcribe should save MIDI files."
-
-        guard panel.runModal() == .OK, let url = panel.url else {
-            return
-        }
-
+        guard panel.runModal() == .OK, let url = panel.url else { return }
         customOutputFolderURL = url
         outputDestinationMode = .customFolder
     }
 
     func clearCustomOutputFolder() {
+        guard !isRunning else { return }
         customOutputFolderURL = nil
         outputDestinationMode = .sourceFolder
     }
 
-    func transcribe(sourceURL: URL) {
-        guard !status.isInProgress else {
-            appendLog("A transcription is already running.")
-            return
-        }
-
-        refreshPianoSeparationAvailability()
-        refreshBenchmarkCheckpointAvailability()
-        if isPianoSeparationEnabled && !isPianoSeparationAvailable {
-            status = .failed(pianoSeparationAvailabilityMessage)
-            appendLog(pianoSeparationAvailabilityMessage)
-            if let details = pianoSeparationAvailabilityDetails,
-               details != pianoSeparationAvailabilityMessage {
-                appendLog(details)
-            }
-            return
-        }
-        if selectedCheckpoint == .benchmarkV2 && !isBenchmarkCheckpointAvailable {
-            status = .failed(benchmarkCheckpointAvailabilityMessage)
-            appendLog(benchmarkCheckpointAvailabilityMessage)
-            if let details = benchmarkCheckpointAvailabilityDetails,
-               details != benchmarkCheckpointAvailabilityMessage {
-                appendLog(details)
-            }
-            return
-        }
-
-        logLines.removeAll()
-        status = .copyingInput
-
-        transcriptionTask = Task { [weak self] in
-            await self?.runTranscription(
-                sourceURL: sourceURL,
-                finalOutputURL: nil,
-                revealInFinder: true,
-                automationResultURL: nil,
-                quitWhenFinished: false
-            )
-        }
-    }
-
-    func runStartupAutomationIfNeeded() {
-        guard !startupAutomationHandled else { return }
-
-        let environment = ProcessInfo.processInfo.environment
-        guard let inputPath = environment["PIANO_TRANSCRIBE_AUTORUN_INPUT"], !inputPath.isEmpty else {
-            return
-        }
-
-        startupAutomationHandled = true
-
-        let inputURL = URL(fileURLWithPath: inputPath)
-        let outputURL = environment["PIANO_TRANSCRIBE_AUTORUN_OUTPUT"].flatMap {
-            $0.isEmpty ? nil : URL(fileURLWithPath: $0)
-        }
-        let resultURL = environment["PIANO_TRANSCRIBE_AUTORUN_RESULT_FILE"].flatMap {
-            $0.isEmpty ? nil : URL(fileURLWithPath: $0)
-        }
-        let revealInFinder = environment["PIANO_TRANSCRIBE_AUTORUN_REVEAL"] != "0"
-        let quitWhenFinished = environment["PIANO_TRANSCRIBE_AUTORUN_QUIT"] == "1"
-        isPianoSeparationEnabled = environment["PIANO_TRANSCRIBE_AUTORUN_PREPROCESSOR"] == "pc-separation"
-        if let saveStems = environment["PIANO_TRANSCRIBE_AUTORUN_SAVE_STEMS"] {
-            shouldSaveSeparatedStems = saveStems != "0"
-        }
-        if let checkpoint = environment["PIANO_TRANSCRIBE_AUTORUN_TRANSKUN_CHECKPOINT"],
-           let selected = TranskunCheckpoint(rawValue: checkpoint) {
-            selectedCheckpoint = selected
-        }
-
-        if environment["PIANO_TRANSCRIBE_AUTORUN_OUTPUT_DESTINATION"] == "source-folder" {
-            outputDestinationMode = .sourceFolder
-        }
-
-        if let outputFolderPath = environment["PIANO_TRANSCRIBE_AUTORUN_OUTPUT_FOLDER"], !outputFolderPath.isEmpty {
-            customOutputFolderURL = URL(fileURLWithPath: outputFolderPath, isDirectory: true)
-            outputDestinationMode = .customFolder
-        }
-
-        refreshPianoSeparationAvailability()
-        refreshBenchmarkCheckpointAvailability()
-        logLines.removeAll()
-        status = .copyingInput
-
-        transcriptionTask = Task { [weak self] in
-            await self?.runTranscription(
-                sourceURL: inputURL,
-                finalOutputURL: outputURL,
-                revealInFinder: revealInFinder,
-                automationResultURL: resultURL,
-                quitWhenFinished: quitWhenFinished
-            )
-        }
-    }
+    func transcribe(sourceURL: URL) { begin(sourceURL: sourceURL) }
 
     func cancel() {
+        guard canCancel else { return }
+        status = .cancelling
         transcriptionTask?.cancel()
         transcriptionService.cancel()
-        status = .cancelled
-        appendLog("Cancelled.")
     }
 
-    func refreshPianoSeparationAvailability() {
-        isPianoSeparationAvailable = PythonBackendManager.isPianoSeparationBackendAvailable()
-        pianoSeparationAvailabilityMessage = PythonBackendManager.pianoSeparationUnavailableMessage()
-            ?? "Separator backend installed."
-        pianoSeparationAvailabilityDetails = PythonBackendManager.pianoSeparationUnavailableDetails()
+    func stop() async {
+        cancel()
+        await transcriptionService.stop()
+        await transcriptionTask?.value
     }
 
     func refreshBenchmarkCheckpointAvailability() {
         isBenchmarkCheckpointAvailable = PythonBackendManager.isTranskunBenchmarkCheckpointAvailable()
-        benchmarkCheckpointAvailabilityMessage = PythonBackendManager.transkunBenchmarkCheckpointUnavailableMessage()
-            ?? "Benchmark checkpoint installed."
-        benchmarkCheckpointAvailabilityDetails = PythonBackendManager.transkunBenchmarkCheckpointUnavailableDetails()
     }
 
     func handleImporterResult(_ result: Result<[URL], Error>) {
+        guard !isRunning else { return }
         switch result {
         case .success(let urls):
-            guard let url = urls.first else {
-                status = .failed("No file was selected.")
-                return
-            }
-            transcribe(sourceURL: url)
+            if let url = urls.first { transcribe(sourceURL: url) }
         case .failure(let error):
-            status = .failed(error.localizedDescription)
+            if (error as NSError).code != NSUserCancelledError { showFailure(error.localizedDescription) }
         }
     }
 
     func handleDrop(providers: [NSItemProvider]) -> Bool {
-        guard let provider = providers.first(where: {
+        guard !isRunning, let provider = providers.first(where: {
             $0.hasItemConformingToTypeIdentifier(UTType.fileURL.identifier)
-        }) else {
-            status = .failed("Drop an audio file.")
-            return false
-        }
-
+        }) else { return false }
         provider.loadItem(forTypeIdentifier: UTType.fileURL.identifier, options: nil) { [weak self] item, error in
-            let loadedURL = Self.fileURL(from: item)
-            let errorMessage = error?.localizedDescription
-
+            let url = Self.fileURL(from: item)
+            let message = error?.localizedDescription
             Task { @MainActor in
-                guard let self else { return }
-
-                if let errorMessage {
-                    self.status = .failed(errorMessage)
-                    return
-                }
-
-                if let url = loadedURL {
-                    self.transcribe(sourceURL: url)
-                } else {
-                    self.status = .failed("Could not read the dropped file URL.")
-                }
+                guard let self, !self.isRunning else { return }
+                if let url { self.transcribe(sourceURL: url) }
+                else { self.showFailure(message ?? "Could not read the dropped file.") }
             }
         }
-
         return true
     }
 
-    private func runTranscription(
-        sourceURL: URL,
-        finalOutputURL: URL?,
-        revealInFinder: Bool,
-        automationResultURL: URL?,
-        quitWhenFinished: Bool
-    ) async {
-        var attemptedOutputURL: URL?
+    // Test automation opts in explicitly and never changes the user's preferences.
+    func runStartupAutomationIfNeeded() {
+        let environment = ProcessInfo.processInfo.environment
+        guard environment["PIANO_TRANSCRIBE_TEST_MODE"] == "1", !startupAutomationHandled,
+              let input = environment["PIANO_TRANSCRIBE_AUTORUN_INPUT"] else { return }
+        startupAutomationHandled = true
+        selectedCheckpoint = environment["PIANO_TRANSCRIBE_AUTORUN_TRANSKUN_CHECKPOINT"]
+            .flatMap(TranskunCheckpoint.init(rawValue:)) ?? .packagedDefault
+        if let folder = environment["PIANO_TRANSCRIBE_AUTORUN_OUTPUT_FOLDER"] {
+            customOutputFolderURL = URL(fileURLWithPath: folder, isDirectory: true)
+            outputDestinationMode = .customFolder
+        }
+        begin(sourceURL: URL(fileURLWithPath: input),
+            outputOverride: environment["PIANO_TRANSCRIBE_AUTORUN_OUTPUT"].map { URL(fileURLWithPath: $0) },
+            reveal: environment["PIANO_TRANSCRIBE_AUTORUN_REVEAL"] != "0",
+            resultFile: environment["PIANO_TRANSCRIBE_AUTORUN_RESULT_FILE"].map { URL(fileURLWithPath: $0) },
+            quit: environment["PIANO_TRANSCRIBE_AUTORUN_QUIT"] == "1")
+    }
 
+    private func begin(sourceURL: URL, outputOverride: URL? = nil, reveal: Bool = true,
+                       resultFile: URL? = nil, quit: Bool = false) {
+        guard !isRunning else { return }
+        logLines.removeAll()
+        progress = nil
+        let checkpoint = selectedCheckpoint
         do {
-            let outputURL = try resolvedOutputURL(for: sourceURL, override: finalOutputURL)
-            attemptedOutputURL = outputURL
-            let result = try await transcriptionService.transcribe(
-                sourceURL: sourceURL,
-                finalOutputURL: outputURL,
-                device: selectedDevice,
-                checkpoint: selectedCheckpoint,
-                preprocessor: selectedPreprocessor,
-                saveSeparatedStems: isPianoSeparationEnabled && shouldSaveSeparatedStems,
+            guard sourceURL.isFileURL, SupportedAudioTypes.extensions.contains(sourceURL.pathExtension.lowercased()) else {
+                throw FileAccessError.unsupportedInputExtension(sourceURL.pathExtension.lowercased())
+            }
+            refreshBenchmarkCheckpointAvailability()
+            if checkpoint == .benchmarkV2 && !isBenchmarkCheckpointAvailable {
+                throw PythonBackendError.transkunBenchmarkCheckpointNotFound
+            }
+            let job = TranscriptionJob(sourceURL: sourceURL,
+                finalOutputURL: try resolvedOutputURL(for: sourceURL, override: outputOverride),
+                device: selectedDevice, checkpoint: checkpoint)
+            activeJobID = job.id
+            status = .preparingBackend
+            transcriptionTask = Task { [weak self] in
+                await self?.run(job, reveal: reveal, resultFile: resultFile, quit: quit)
+            }
+        } catch {
+            showFailure(error.localizedDescription)
+            writeAutomationResult(.init(status: "failed", input: sourceURL.path,
+                checkpoint: checkpoint.rawValue, message: error.localizedDescription, logs: logLines), to: resultFile)
+            if quit { NSApp.terminate(nil) }
+        }
+    }
+
+    private func run(_ job: TranscriptionJob, reveal: Bool, resultFile: URL?, quit: Bool) async {
+        var automation = AutomationResult(status: "failed", input: job.sourceURL.path,
+                                           checkpoint: job.checkpoint.rawValue)
+        do {
+            let result = try await transcriptionService.transcribe(job,
                 statusHandler: { [weak self] status in
                     Task { @MainActor in
-                        self?.status = status
+                        guard let self, self.activeJobID == job.id, self.status != .cancelling else { return }
+                        self.status = status
+                        self.progress = nil
                     }
-                },
-                logHandler: { [weak self] line in
+                }, logHandler: { [weak self] line in
                     Task { @MainActor in
-                        self?.appendLog(line)
+                        guard let self, self.activeJobID == job.id else { return }
+                        self.receive(line)
                     }
-                }
-            )
-
+                })
             status = .completed(result.midiURL)
-            writeAutomationResult(
-                status: "completed",
-                sourceURL: sourceURL,
-                outputURL: result.midiURL,
-                stemOutputURLs: result.savedStemURLs,
-                checkpoint: selectedCheckpoint,
-                message: nil,
-                resultURL: automationResultURL
-            )
-
-            if revealInFinder {
-                NSWorkspace.shared.activateFileViewerSelecting([result.midiURL] + result.savedStemURLs)
-            }
+            progress = 1
+            automation.status = "completed"
+            automation.output = result.midiURL.path
+            automation.outputExists = FileManager.default.fileExists(atPath: result.midiURL.path)
+            if reveal { NSWorkspace.shared.activateFileViewerSelecting([result.midiURL]) }
         } catch is CancellationError {
             status = .cancelled
-            writeAutomationResult(
-                status: "cancelled",
-                sourceURL: sourceURL,
-                outputURL: attemptedOutputURL,
-                checkpoint: selectedCheckpoint,
-                message: "Cancelled",
-                resultURL: automationResultURL
-            )
+            automation.status = "cancelled"
         } catch {
-            let message = userFacingMessage(for: error)
-            status = .failed(message)
             appendLog(error.localizedDescription)
-            writeAutomationResult(
-                status: "failed",
-                sourceURL: sourceURL,
-                outputURL: attemptedOutputURL,
-                checkpoint: selectedCheckpoint,
-                message: message,
-                resultURL: automationResultURL
-            )
+            let message: String
+            if let processError = error as? ProcessRunnerError {
+                switch processError {
+                case .signalled(let signal, _):
+                    message = signal == 9
+                        ? "The backend was killed. Memory pressure may be the cause. Open Details for diagnostics."
+                        : "The backend was stopped by signal \(signal). Open Details for diagnostics."
+                case .exited(_, let diagnostics):
+                    message = Self.backendFailure(in: diagnostics)
+                        ?? "Transcription failed. Open Details for diagnostics."
+                case .launchFailed, .alreadyStarted:
+                    message = "Transcription failed. Open Details for diagnostics."
+                }
+            } else { message = error.localizedDescription }
+            status = .failed(message)
+            isLogExpanded = true
+            automation.message = message
         }
+        automation.logs = logLines
+        activeJobID = nil
+        transcriptionTask = nil
+        writeAutomationResult(automation, to: resultFile)
+        if quit { NSApp.terminate(nil) }
+    }
 
-        if quitWhenFinished {
-            NSApp.terminate(nil)
+    private func receive(_ line: String) {
+        appendLog(line)
+        guard status != .cancelling, let data = line.data(using: .utf8),
+              let event = try? JSONDecoder().decode(BackendEvent.self, from: data), event.version == 1 else { return }
+        if event.event == "stage" {
+            switch event.stage {
+            case "validating", "loading_model": status = .preparingBackend
+            case "decoding": status = .copyingInput
+            case "transcribing": status = .transcribing
+            case "writing_midi": status = .savingOutput
+            default: break
+            }
+            progress = nil
+        }
+        if event.event == "progress", let processed = event.processedSeconds, let total = event.totalSeconds,
+           total > 0, processed.isFinite, total.isFinite {
+            progress = min(1, max(0, processed / total))
         }
     }
 
-    private func appendLog(_ line: String) {
-        let trimmed = line.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty else { return }
-        logLines.append(trimmed)
-    }
-
-    nonisolated private static func fileURL(from item: NSSecureCoding?) -> URL? {
-        if let url = item as? URL {
-            return url
+    nonisolated private static func backendFailure(in diagnostics: String) -> String? {
+        for line in diagnostics.split(separator: "\n").reversed() {
+            guard let data = line.data(using: .utf8),
+                  let event = try? JSONDecoder().decode(BackendEvent.self, from: data),
+                  event.version == 1, event.event == "error", let message = event.message else { continue }
+            return String(message.prefix(512))
         }
-
-        if let data = item as? Data,
-           let string = String(data: data, encoding: .utf8) {
-            return URL(string: string.trimmingCharacters(in: .whitespacesAndNewlines))
-        }
-
-        if let string = item as? String {
-            return URL(string: string.trimmingCharacters(in: .whitespacesAndNewlines))
-        }
-
         return nil
     }
 
-    private func resolvedOutputURL(for inputURL: URL, override: URL?) throws -> URL {
-        if let override {
-            return override
-        }
+    private func appendLog(_ line: String) {
+        let text = line.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !text.isEmpty else { return }
+        logLines.append(String(text.prefix(8192)))
+        if logLines.count > 512 { logLines.removeFirst(logLines.count - 512) }
+    }
 
-        let fileName = Self.defaultOutputFileName(for: inputURL)
+    private func showFailure(_ message: String) {
+        guard !isRunning else { return }
+        status = .failed(message)
+        appendLog(message)
+        isLogExpanded = true
+    }
 
+    private func resolvedOutputURL(for input: URL, override: URL?) throws -> URL {
+        if let override { return override }
+        let folder: URL
         switch outputDestinationMode {
-        case .sourceFolder:
-            return inputURL.deletingLastPathComponent().appendingPathComponent(fileName)
+        case .sourceFolder: folder = input.deletingLastPathComponent()
         case .customFolder:
-            guard let folder = customOutputFolderURL else {
-                throw OutputDestinationError.customFolderMissing
-            }
-
+            guard let selected = customOutputFolderURL else { throw OutputDestinationError.customFolderMissing }
             var isDirectory: ObjCBool = false
-            guard FileManager.default.fileExists(atPath: folder.path, isDirectory: &isDirectory),
-                  isDirectory.boolValue else {
-                throw OutputDestinationError.customFolderUnavailable(folder.path)
+            guard FileManager.default.fileExists(atPath: selected.path, isDirectory: &isDirectory), isDirectory.boolValue else {
+                throw OutputDestinationError.customFolderUnavailable(selected.path)
             }
-
-            return folder.appendingPathComponent(fileName)
+            folder = selected
         }
+        return folder.appendingPathComponent("\(input.deletingPathExtension().lastPathComponent)-transkun.mid")
     }
 
-    private static func defaultOutputFileName(for inputURL: URL) -> String {
-        let base = inputURL.deletingPathExtension().lastPathComponent
-        return "\(base)-transkun.mid"
+    nonisolated private static func fileURL(from item: NSSecureCoding?) -> URL? {
+        if let url = item as? URL { return url }
+        let string = (item as? String) ?? (item as? Data).flatMap { String(data: $0, encoding: .utf8) }
+        return string.flatMap { URL(string: $0.trimmingCharacters(in: .whitespacesAndNewlines)) }
     }
 
-    private func userFacingMessage(for error: Error) -> String {
-        if let serviceError = error as? TranscriptionServiceError {
-            switch serviceError {
-            case .processFailed:
-                return "Transkun failed. Open Details for backend output."
-            case .outputMissing:
-                return serviceError.localizedDescription
-            }
-        }
-
-        if let preprocessorError = error as? AudioPreprocessorError {
-            switch preprocessorError {
-            case .processFailed:
-                return "Piano/orchestra separation failed. Open Details for backend output."
-            case .outputMissing, .stemOutputMissing:
-                return preprocessorError.localizedDescription
-            }
-        }
-
-        if let backendError = error as? PythonBackendError {
-            switch backendError {
-            case .backendNotFound:
-                return "Python backend was not found. Run the backend setup before transcribing."
-            case .runnerNotFound:
-                return "Transkun runner script was not found."
-            case .pianoSeparationBackendNotFound:
-                return "Piano/orchestra separation backend is missing or damaged."
-            case .pianoSeparationRunnerNotFound:
-                return "Piano/orchestra separation runner script was not found."
-            case .pianoSeparationRepositoryNotFound:
-                return "Bundled pc-separation files or HDMC checkpoint are missing."
-            case .transkunBenchmarkCheckpointNotFound:
-                return "Transkun benchmark checkpoint is missing or damaged."
-            }
-        }
-
-        return error.localizedDescription
-    }
-
-    private enum SettingsKeys {
-        static let outputDestinationMode = "outputDestinationMode"
-        static let customOutputFolderPath = "customOutputFolderPath"
-        static let shouldSaveSeparatedStems = "shouldSaveSeparatedStems"
-        static let selectedCheckpoint = "selectedCheckpoint"
-    }
-
-    private var selectedPreprocessor: AudioPreprocessor {
-        if isPianoSeparationEnabled {
-            return PianoConcertoSeparationPreprocessor()
-        }
-
-        return NoOpPreprocessor()
-    }
-
-    private func writeAutomationResult(
-        status: String,
-        sourceURL: URL,
-        outputURL: URL?,
-        stemOutputURLs: [URL] = [],
-        checkpoint: TranskunCheckpoint,
-        message: String?,
-        resultURL: URL?
-    ) {
-        guard let resultURL else { return }
-
-        var payload: [String: Any] = [
-            "status": status,
-            "input": sourceURL.path,
-            "checkpoint": checkpoint.rawValue,
-            "logs": logLines
-        ]
-
-        if let outputURL {
-            payload["output"] = outputURL.path
-            payload["outputExists"] = FileManager.default.fileExists(atPath: outputURL.path)
-        }
-
-        if !stemOutputURLs.isEmpty {
-            payload["stemOutputs"] = stemOutputURLs.map(\.path)
-            payload["stemOutputExists"] = stemOutputURLs.allSatisfy { url in
-                var isDirectory: ObjCBool = false
-                return FileManager.default.fileExists(atPath: url.path, isDirectory: &isDirectory)
-                    && !isDirectory.boolValue
-            }
-        }
-
-        if let message {
-            payload["message"] = message
-        }
-
+    private func writeAutomationResult(_ result: AutomationResult, to url: URL?) {
+        guard let url else { return }
         do {
-            try FileManager.default.createDirectory(
-                at: resultURL.deletingLastPathComponent(),
-                withIntermediateDirectories: true
-            )
-            let data = try JSONSerialization.data(withJSONObject: payload, options: [.prettyPrinted, .sortedKeys])
-            try data.write(to: resultURL, options: .atomic)
-        } catch {
-            appendLog("Could not write automation result: \(error.localizedDescription)")
-        }
+            try FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
+            let encoder = JSONEncoder()
+            encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
+            try encoder.encode(result).write(to: url, options: .atomic)
+        } catch { appendLog("Could not write test result: \(error.localizedDescription)") }
     }
+}
+
+private struct BackendEvent: Decodable {
+    let version: Int
+    let event: String
+    let stage: String?
+    let message: String?
+    let processedSeconds: Double?
+    let totalSeconds: Double?
+}
+
+private struct AutomationResult: Encodable {
+    var status: String
+    let input: String
+    let checkpoint: String
+    var output: String?
+    var outputExists: Bool?
+    var message: String?
+    var logs: [String] = []
 }

@@ -1,5 +1,7 @@
 # Piano transcribe V2 model research
 
+> Historical research only. Filip declined these candidates on 2026-10-02. V2 keeps the existing Transkun checkpoints and removes piano/orchestra separation.
+
 Sources checked: 2026-10-02. No models were installed, downloaded, or executed. This document separates upstream evidence from proposed experiments.
 
 Read the [V2 review](/Users/filip/Developer/piano-transcribe/V2_REVIEW.md) for current implementation defects and the [V2 plan](/Users/filip/Developer/piano-transcribe/V2_PLAN.md) for adoption criteria.

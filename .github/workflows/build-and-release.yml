@@ -1,88 +1,153 @@
-name: Build and Release
+name: Validate and Package V2
 
 on:
+  pull_request:
   push:
-    branches:
-      - main
-    tags:
-      - "v*"
+    branches: [main]
+    tags: ['v*']
   workflow_dispatch:
+    inputs:
+      allow_unsigned:
+        description: 'Build an explicitly unsigned testing artifact instead of a notarized release'
+        type: boolean
+        default: false
 
 permissions:
-  contents: write
+  contents: read
 
 env:
-  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: 'true'
 
 jobs:
-  build-macos:
-    name: macOS 26 build
+  fast-checks:
+    name: Swift and Backend Contracts
+    runs-on: macos-26
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
+        with:
+          python-version: '3.12'
+      - name: Focused lifecycle, file and backend tests
+        run: ./script/test.sh
+      - name: Release dependency gate tests
+        run: python3 -B -m unittest discover -s Packaging/tests -v
+      - name: Build native app
+        run: >-
+          xcodebuild -project PianoTranscribe.xcodeproj -scheme PianoTranscribe
+          -configuration Debug -derivedDataPath build/DerivedData
+          ARCHS=arm64 CODE_SIGN_IDENTITY=- build
+
+  package:
+    name: Standalone Apple Silicon Bundle
+    needs: fast-checks
+    if: github.event_name == 'workflow_dispatch' || startsWith(github.ref, 'refs/tags/v')
     runs-on: macos-26
     timeout-minutes: 90
-
+    outputs:
+      unsigned: ${{ steps.mode.outputs.unsigned }}
+    env:
+      SIGN_IDENTITY: ${{ secrets.SIGN_IDENTITY }}
+      SIGNING_CERTIFICATE_P12_BASE64: ${{ secrets.SIGNING_CERTIFICATE_P12_BASE64 }}
+      SIGNING_CERTIFICATE_PASSWORD: ${{ secrets.SIGNING_CERTIFICATE_PASSWORD }}
+      APPLE_ID: ${{ secrets.APPLE_ID }}
+      APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+      APPLE_APP_PASSWORD: ${{ secrets.APPLE_APP_PASSWORD }}
+      DOWNLOAD_BENCHMARK: '1'
+      TRANSKUN_BENCHMARK_DIR: ${{ github.workspace }}/External/transkun-checkpoints/benchmark-v2
+      PIANO_TRANSCRIBE_TEST_BENCHMARK_CHECKPOINT: '1'
     steps:
-      - name: Check out repository
-        uses: actions/checkout@v4
-
-      - name: Set up Python 3.10
-        uses: actions/setup-python@v5
-        with:
-          python-version: "3.10"
-
-      - name: Set up Python 3.12
-        uses: actions/setup-python@v5
-        with:
-          python-version: "3.12"
-
-      - name: Show tool versions
-        run: |
-          xcodebuild -version
-          swift --version
-          python3.10 --version
-          python3.12 --version
-
-      - name: Build and smoke-test backend
-        run: ./Packaging/build_backend_dev.sh
-
-      - name: Download and smoke-test Transkun benchmark checkpoint
-        run: |
-          ./Packaging/download_transkun_benchmark_checkpoint.sh
-          .venv/bin/python Backend/smoke_test.py \
-            --checkpoint benchmark-v2 \
-            --checkpoint-dir "$PWD/External/transkun-checkpoints/benchmark-v2"
-
-      - name: Build and smoke-test pc-separation backend
-        run: |
-          PYTHON_BIN=python3.10 ./Packaging/build_pc_separation_release.sh
-          PIANO_TRANSCRIBE_PC_SEPARATION_ROOT="$PWD/External/pc-separation" \
-          "$PWD/.pc-separation-env/bin/python" Backend/pc_separator_smoke_test.py
-
-      - name: Run app E2E smoke test
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - name: Select distribution mode
+        id: mode
         env:
-          PIANO_TRANSCRIBE_TEST_SEPARATOR: "1"
-          PIANO_TRANSCRIBE_TEST_BENCHMARK_CHECKPOINT: "1"
-          PIANO_TRANSCRIBE_TRANSKUN_BENCHMARK_DIR: ${{ github.workspace }}/External/transkun-checkpoints/benchmark-v2
-          PIANO_TRANSCRIBE_PC_SEPARATION_ROOT: ${{ github.workspace }}/External/pc-separation
-          PIANO_TRANSCRIBE_PC_SEPARATION_PYTHON: ${{ github.workspace }}/.pc-separation-env/bin/python
+          UNSIGNED_REQUESTED: ${{ github.event_name == 'workflow_dispatch' && inputs.allow_unsigned }}
+        run: |
+          if [[ "$UNSIGNED_REQUESTED" == true ]]; then
+            echo 'unsigned=true' >> "$GITHUB_OUTPUT"
+          else
+            echo 'unsigned=false' >> "$GITHUB_OUTPUT"
+            ./Packaging/import_signing_identity.sh
+          fi
+          if [[ "$GITHUB_REF" == refs/tags/v* ]]; then
+            echo "VERSION=${GITHUB_REF_NAME#v}" >> "$GITHUB_ENV"
+          fi
+          echo "BUILD_NUMBER=$GITHUB_RUN_NUMBER" >> "$GITHUB_ENV"
+      - name: Prepare pinned standalone runtime and local-only decoders
+        run: ./Packaging/prepare_backend.sh
+      - name: Transkun real-audio smoke test
+        env:
+          PIANO_TRANSCRIBE_FFMPEG_BIN: ${{ github.workspace }}/build/Backend/bin
+        run: >-
+          build/Backend/python/bin/python3.12 -I -B Backend/smoke_test.py
+          --ffmpeg "$PWD/build/Backend/bin/ffmpeg"
+          --ffprobe "$PWD/build/Backend/bin/ffprobe"
+      - name: Debug app end-to-end
+        env:
+          PIANO_TRANSCRIBE_PYTHON: ${{ github.workspace }}/build/Backend/python/bin/python3.12
+          PIANO_TRANSCRIBE_FFMPEG_BIN: ${{ github.workspace }}/build/Backend/bin
         run: ./script/app_e2e.sh
-
-      - name: Build app and package developer DMG
-        run: ./Packaging/package_dmg.sh --dev-venv-ok --skip-notarize
-
-      - name: Run release app E2E smoke test
-        run: ./script/release_app_e2e.sh "build/DerivedData/Build/Products/Release/Piano transcribe.app"
-
-      - name: Upload DMG artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: piano-transcribe-dmg
-          path: dist/*.dmg
-
-      - name: Publish GitHub Release for tags
-        if: startsWith(github.ref, 'refs/tags/v')
+      - name: Build, verify and package DMG
         env:
-          GH_TOKEN: ${{ github.token }}
+          UNSIGNED: ${{ steps.mode.outputs.unsigned }}
         run: |
-          gh release create "${GITHUB_REF_NAME}" dist/*.dmg \
-            --title "Piano transcribe ${GITHUB_REF_NAME}" \
-            --notes "Developer DMG build from GitHub Actions. Final notarized distribution still requires standalone Python backend packaging and Developer ID signing."
+          if [[ "$UNSIGNED" == true ]]; then
+            # Explicit choice: the resulting filename carries -unsigned.
+            SIGN_IDENTITY= ./Packaging/package_dmg.sh --allow-unsigned
+          else
+            ./Packaging/package_dmg.sh
+          fi
+      - name: Include source-independent consumer test tools
+        run: |
+          mkdir -p dist/consumer-tools/script dist/consumer-tools/Packaging
+          cp script/release_app_e2e.sh script/e2e.py dist/consumer-tools/script/
+          cp Packaging/check_release_readiness.sh Packaging/verify_backend.py Packaging/macho_audit.py dist/consumer-tools/Packaging/
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: piano-transcribe-v2-candidate
+          path: dist/
+          compression-level: 0
+          if-no-files-found: error
+      - name: Remove temporary signing keychain
+        if: always()
+        run: |
+          if [[ -n "${SIGNING_KEYCHAIN:-}" ]]; then
+            security delete-keychain "$SIGNING_KEYCHAIN"
+          fi
+
+  consume:
+    name: Relocated Offline Artifact Test
+    needs: package
+    runs-on: macos-26
+    timeout-minutes: 20
+    env:
+      UNSIGNED: ${{ needs.package.outputs.unsigned }}
+      PIANO_TRANSCRIBE_TEST_BENCHMARK_CHECKPOINT: '1'
+    steps:
+      # No source checkout, setup-python, developer venv, Homebrew, or model download.
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: piano-transcribe-v2-candidate
+          path: candidate
+      - name: Install downloaded artifact in a different directory
+        run: |
+          cd candidate
+          shasum -a 256 -c *.dmg.sha256
+          mkdir -p "$RUNNER_TEMP/Piano DMG" "$RUNNER_TEMP/Relocated Piano App"
+          hdiutil attach -readonly -nobrowse -mountpoint "$RUNNER_TEMP/Piano DMG" *.dmg
+          ditto "$RUNNER_TEMP/Piano DMG/Piano transcribe.app" "$RUNNER_TEMP/Relocated Piano App/Piano transcribe.app"
+          hdiutil detach "$RUNNER_TEMP/Piano DMG"
+          chmod +x consumer-tools/script/release_app_e2e.sh consumer-tools/Packaging/check_release_readiness.sh
+      - name: Audit and execute with network denied
+        run: |
+          APP="$RUNNER_TEMP/Relocated Piano App/Piano transcribe.app"
+          ARGS=()
+          if [[ "$UNSIGNED" == true ]]; then
+            ARGS+=(--allow-unsigned)
+          fi
+          /usr/bin/sandbox-exec -p '(version 1)(allow default)(deny network*)' \
+            candidate/consumer-tools/Packaging/check_release_readiness.sh "$APP" "${ARGS[@]}"
+          /usr/bin/sandbox-exec -p '(version 1)(allow default)(deny network*)' \
+            candidate/consumer-tools/script/release_app_e2e.sh "$APP"
+      - name: Distribution result
+        run: echo 'Candidate artifact passed the independent offline consumer. Publishing requires a separate explicit release action.'
