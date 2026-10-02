@@ -23,6 +23,11 @@ For an existing development environment, Debug builds accept `PIANO_TRANSCRIBE_P
 
 ## Release status
 
-V2 is under implementation and qualification. It is not yet declared production-ready. Packaging creates a standalone Python backend and bundles FFmpeg and FFprobe. Signed releases require Developer ID and notarization credentials; unsigned artifacts are an explicit alternative, not a silent fallback.
+V2's unsigned Apple Silicon DMG passes the full build and independent relocated
+offline app tests. The [qualified candidate](https://github.com/FilipJaskovic/piano-transcribe/actions/runs/37070971794)
+includes both checkpoints, standalone Python, FFmpeg, FFprobe, and license notices.
+It is a testing artifact, not a published release or a Gatekeeper-ready build.
+Developer ID signing and notarization still require Apple credentials and a
+separate successful qualification run.
 
 See `Packaging/README.md` for release commands and `V2_PLAN.md` for current progress. The original V1 source and plan are preserved on GitHub branch `backup/v1-before-v2-2026-10-02`.
