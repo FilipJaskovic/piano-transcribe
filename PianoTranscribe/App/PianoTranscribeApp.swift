@@ -12,6 +12,8 @@ struct PianoTranscribeApp: App {
                 .onAppear { appDelegate.model = model }
         }
         .windowResizability(.contentMinSize)
+        .defaultSize(width: 600, height: 480)
+        .windowToolbarStyle(.unified)
         .commands {
             CommandGroup(after: .newItem) {
                 Button("Choose Audio File...") {
@@ -30,7 +32,7 @@ struct PianoTranscribeApp: App {
 
         Settings {
             SettingsView(model: model)
-                .frame(width: 420)
+                .frame(width: 480, height: 380)
         }
     }
 }
