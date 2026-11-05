@@ -1,44 +1,49 @@
-# Packaging Piano transcribe V2
+# Package Piano transcribe for release
 
 Release artifacts target Apple Silicon and macOS 26 or later. The app bundles
-Transkun, its packaged-default and existing benchmark checkpoints, CPython 3.12, and local-only FFmpeg and
-ffprobe. There is no separator, user-installed Python, Homebrew requirement, or
-first-run model download.
+Transkun, the packaged-default checkpoint, CPython 3.12, FFmpeg, and ffprobe.
+The benchmark V2 checkpoint is optional. Users need no Python install, no Homebrew,
+and no first-run model download.
 
 ## Build an unsigned testing artifact
 
-Run on an Apple Silicon Mac with Xcode 26 and at least 8 GiB free:
+Run this on an Apple Silicon Mac with Xcode 26 and at least 8 GiB free:
 
 ```bash
 ./Packaging/package_dmg.sh --allow-unsigned
 ```
 
-The filename includes `-unsigned`. It is ad-hoc signed for local executable
-integrity, not Developer ID signed or notarized. Do not describe this channel as
-Gatekeeper-ready. No Developer ID certificate is needed for this explicit mode.
+The DMG filename ends in `-unsigned`. The app is ad-hoc signed, which keeps its
+executables intact on the build Mac. It is not Developer ID signed or notarized,
+so Gatekeeper blocks it on other Macs until the user allows it.
 
 ## Build a notarized artifact
 
-Set `SIGN_IDENTITY` to a Developer ID Application identity and provide `APPLE_ID`,
-`APPLE_TEAM_ID`, and `APPLE_APP_PASSWORD`. The certificate must already be
-installed locally. Then run:
+Install a Developer ID Application certificate. Set `SIGN_IDENTITY` to its
+identity and set `APPLE_ID`, `APPLE_TEAM_ID`, and `APPLE_APP_PASSWORD`. Then run:
 
 ```bash
 ./Packaging/package_dmg.sh
 ```
 
-Missing identity or credentials fail before backend downloads. The pipeline signs
-nested Mach-O files individually, signs the app, requires Apple's `Accepted`
-notarization result, staples and validates both the app and final DMG, and checks
-Gatekeeper. `VERSION` defaults to `0.2.0`; `BUILD_NUMBER` defaults to `2`.
+The script fails before any download if the identity or a credential is missing.
+It signs each nested Mach-O file, then the app. It requires an `Accepted`
+notarization result, staples and validates the app and the DMG, and runs a
+Gatekeeper check.
+
+`VERSION` defaults to `0.2.0`. `BUILD_NUMBER` defaults to `2`.
 
 ## GitHub Actions
 
-Pull requests and main pushes run focused tests and build the Swift app. Manual
-runs and version tags also build the standalone backend and DMG, then download
-that artifact in a separate job with no source checkout or Python setup. The
-consumer relocates the app and runs bundle validation and E2E with networking
-denied. Production requires these repository secrets:
+Pull requests and pushes to `main` run the Swift and backend contract tests and
+build the Swift app. They do not build the bundle.
+
+Manual runs and `v*` tags also build the standalone backend and the DMG. A second
+job downloads that DMG with no source checkout and no Python setup. It moves the
+app, blocks network access, and runs bundle validation and the app E2E test.
+
+A manual run can set `allow_unsigned`. A tag build never falls back to unsigned
+packaging. Signed builds need these repository secrets:
 
 - `SIGN_IDENTITY`
 - `SIGNING_CERTIFICATE_P12_BASE64`
@@ -47,55 +52,53 @@ denied. Production requires these repository secrets:
 - `APPLE_TEAM_ID`
 - `APPLE_APP_PASSWORD`
 
-A manual run can explicitly select `allow_unsigned`. Version tags cannot silently
-fall back to unsigned packaging. Workflows upload candidate artifacts; they do
-not automatically create or publish a GitHub Release. Publish only after the
-independent consumer passes and a human authorizes the release.
+The workflow uploads the DMG as an artifact. It does not create a GitHub Release.
+Publish a release only after the second job passes.
 
 ## Pinned inputs and licenses
 
-`sources.env` pins official standalone CPython archives and the official FFmpeg
-source archive to expected SHA256 values. Runtime metadata comes from the
-[official standalone release API](https://api.github.com/repos/astral-sh/python-build-standalone/releases/tags/20261001).
-The FFmpeg source checksum was cross-checked against the maintained
-[Homebrew source recipe](https://github.com/Homebrew/homebrew-core/blob/master/Formula/f/ffmpeg@7.rb);
-we build from that source, not Homebrew's GPL-enabled binary.
+`sources.env` pins the official standalone CPython archives and the official
+FFmpeg source archive to SHA256 values. The CPython metadata comes from the
+[python-build-standalone release API](https://api.github.com/repos/astral-sh/python-build-standalone/releases/tags/20261001).
+The FFmpeg checksum matches the
+[Homebrew `ffmpeg@7` recipe](https://github.com/Homebrew/homebrew-core/blob/master/Formula/f/ffmpeg@7.rb).
+The build uses that source archive, not Homebrew's GPL-enabled binary.
 
-`Backend/requirements-transkun.lock` locks distribution versions and upstream
-artifact hashes. Source-only Python packages use the separately pinned build
-tools without dynamic build-isolation downloads. The pinned standalone runtime
-supplies the fixed pip version. Package legal texts and metadata are collected
-from the installed distributions; missing evidence fails collection. Runtime
-dependency licenses and metadata are copied from the matching full Python
-archive, following the [standalone archive documentation](https://gregoryszorc.com/docs/python-build-standalone/main/distributions.html).
+`Backend/requirements-transkun.lock` pins each package version and its upstream
+artifact hashes. Source-only packages build with the tools pinned in
+`requirements-build.lock`, with no extra downloads. `collect_licenses.py` copies
+each package's license texts and metadata, and fails if any are missing. The
+CPython runtime's dependency licenses come from the matching full archive, as the
+[standalone distribution docs](https://gregoryszorc.com/docs/python-build-standalone/main/distributions.html)
+describe.
 
-The pinned wheels contain a few build-machine library paths. A narrow relocation
-recipe repairs only the verified paths, preserves actual library loads, and
-re-signs changed binaries before runtime imports. The recipe is included with
-license notices; download hashes describe the original wheels, not patched bytes.
+A few pinned wheels contain library paths from their build machines.
+`relocate_wheel_libraries.py` rewrites only those known paths and re-signs each
+changed binary before Python imports it. The bundle includes this script with the
+license notices. The pinned hashes describe the original wheels, not the patched
+files.
 
-FFmpeg is built without GPL, nonfree, external autodetected libraries or network
-protocols. It includes only the audio decoders, filters and WAV/raw-float output
-needed by the runner. Both executables, the LGPL notice, unmodified source
-archive, build configuration and recipe are bundled. See
-[FFmpeg's licensing guidance](https://ffmpeg.org/legal.html).
+`build_ffmpeg.sh` builds FFmpeg without GPL code, nonfree code, autodetected
+external libraries, or network protocols. It enables only the audio decoders,
+filters, and WAV and raw float output that the runner uses. The bundle includes
+both executables, the LGPL notice, the unmodified source archive, the build
+configuration, and the build script. See
+[FFmpeg's license guidance](https://ffmpeg.org/legal.html).
 
-`macho_audit.py` rejects non-arm64 binaries, broken/escaping symlinks, and
-unresolved dependencies or rpaths outside the app and macOS system libraries.
-This prevents builder Homebrew/toolcache paths from masquerading as portability.
+`macho_audit.py` rejects any binary that is not arm64, any broken symlink or
+symlink that points outside the bundle, and any dependency or rpath outside the
+app and the macOS system libraries. A path into the build machine's Homebrew or
+toolcache fails the audit.
 
-## Optional existing benchmark checkpoint
+## Add the benchmark checkpoint
 
-The packaged-default model remains the default. Production CI bundles the existing
-benchmark V2 option with `DOWNLOAD_BENCHMARK=1` and tests both selections. For local
-builds, a benchmark V2 pair can be supplied with `TRANSKUN_BENCHMARK_DIR`; staging verifies both files against
-`Backend/checkpoints.json`. To fetch that existing upstream checkpoint at build
-time, run `download_transkun_benchmark_checkpoint.sh`. It validates the committed
-weight/config hashes before accepting files. No application startup downloads
-are performed.
+CI sets `DOWNLOAD_BENCHMARK=1`, so CI builds include benchmark V2 and test both
+checkpoints. A local build includes it in one of two ways:
 
-## Verification limits
+- Set `DOWNLOAD_BENCHMARK=1` to run `download_transkun_benchmark_checkpoint.sh`
+  during the build.
+- Set `TRANSKUN_BENCHMARK_DIR` to a folder that already has `checkpoint.pt` and
+  `model.conf`.
 
-Writing these scripts or running focused tests does not establish release
-readiness. The full standalone build, independent relocated offline E2E, and
-selected signing/notarization path must run successfully on the final artifact.
+Either way, the build checks both files against the hashes in
+`Backend/checkpoints.json`. The app never downloads a model at startup.
