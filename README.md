@@ -1,33 +1,60 @@
 # Piano transcribe
 
-A native macOS 26+ app for local piano audio-to-MIDI transcription with Transkun V2.
+Piano transcribe is a macOS app that turns a piano recording into a MIDI file. It runs the [Transkun](https://github.com/Yujia-Yan/Transkun) transcription model on your Mac, so no audio leaves the machine.
 
-V2 removes piano/orchestra separation. The packaged Transkun checkpoint and CPU remain the defaults. Benchmark V2 is optional. No newly researched model is included.
+It needs macOS 26 or later on Apple Silicon.
 
-Select or drop MP3, WAV, AIFF, M4A, or FLAC audio. MIDI saves beside the source unless a custom output folder is selected in Settings. Existing outputs are preserved with numbered filenames.
+## Use the app
 
-## Development
+1. Drop an MP3, WAV, AIFF, M4A, or FLAC file on the window, or click **Choose Audio**.
+2. Wait for the four steps to finish: Prepare, Decode, Transcribe, and Save.
+3. Click **Show in Finder** to open the MIDI file.
 
-Use Xcode 26+ and Python 3.12. The app is non-sandboxed. Developer environments are never used as release runtimes.
+The app saves `<recording>-transkun.mid` next to the recording. If that file already exists, the app keeps it and saves a numbered copy, such as `<recording>-transkun (2).mid`.
+
+To change where MIDI files go, open **Settings** from the header or press Cmd-,. Settings also selects the model checkpoint and the device:
+
+- **Packaged default** is Transkun V2 No Pedal Ext, the checkpoint that ships with the `transkun` package.
+- **Benchmark V2** is the checkpoint from the Transkun model card. CI builds include it. A local build includes it only with `DOWNLOAD_BENCHMARK=1`.
+- **CPU** is the default device. **MPS / Metal** is experimental.
+
+## Install
+
+There is no published release yet. Developer ID signing and notarization are not set up ([#4](https://github.com/FilipJaskovic/piano-transcribe/issues/4)), so macOS shows a security warning for any build you make.
+
+To build an unsigned DMG, run this on an Apple Silicon Mac with Xcode 26 and at least 8 GiB free:
+
+```bash
+./Packaging/package_dmg.sh --allow-unsigned
+```
+
+The DMG contains everything the app needs: Python 3.12, Transkun, the packaged checkpoint, and FFmpeg. It does not need Homebrew, a Python install, or a network connection. [Packaging/README.md](Packaging/README.md) covers signed builds and CI.
+
+## Develop
+
+You need Xcode 26 and Python 3.12. Build the development backend once, then point Debug builds at it:
 
 ```bash
 ./Packaging/build_backend_dev.sh
 export PIANO_TRANSCRIBE_PYTHON="$PWD/build/Backend/python/bin/python3.12"
 export PIANO_TRANSCRIBE_FFMPEG_BIN="$PWD/build/Backend/bin"
-./script/test.sh
-./script/build_and_run.sh
-./script/app_e2e.sh
 ```
 
-For an existing development environment, Debug builds accept `PIANO_TRANSCRIBE_PYTHON`, `PIANO_TRANSCRIBE_ROOT`, and an optional `PIANO_TRANSCRIBE_FFMPEG_BIN`. Release builds resolve only bundled runtime and decoder paths.
+Then use these scripts:
 
-## Release status
+- `./script/test.sh` runs the Swift core tests against a fake backend.
+- `./script/build_and_run.sh` builds and opens the Debug app.
+- `./script/app_e2e.sh` runs the app end to end on generated audio. It never changes your saved settings.
 
-V2's unsigned Apple Silicon DMG passes the full build and independent relocated
-offline app tests. The [qualified candidate](https://github.com/FilipJaskovic/piano-transcribe/actions/runs/37070971794)
-includes both checkpoints, standalone Python, FFmpeg, FFprobe, and license notices.
-It is a testing artifact, not a published release or a Gatekeeper-ready build.
-Developer ID signing and notarization still require Apple credentials and a
-separate successful qualification run.
+Release builds ignore these environment variables and use only the runtime inside the app bundle.
 
-See `Packaging/README.md` for release commands and `V2_PLAN.md` for current progress. The original V1 source and plan are preserved on GitHub branch `backup/v1-before-v2-2026-10-02`.
+## Repository layout
+
+- `PianoTranscribe/` is the SwiftUI app.
+- `Backend/` is the Python runner that the app starts for each job. [Backend/PROTOCOL.md](Backend/PROTOCOL.md) describes its JSON output.
+- `Packaging/` builds and checks the release bundle.
+- `Tests/` and `script/` hold the tests.
+
+## Limits
+
+The tests check that the app produces valid MIDI. They do not measure transcription accuracy on real recordings, and memory use on recordings longer than a few minutes is unmeasured. Version 0.2.0 removed the optional piano and orchestra separation from 0.1.0.
