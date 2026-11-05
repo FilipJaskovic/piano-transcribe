@@ -12,9 +12,14 @@ struct PianoTranscribeApp: App {
                 .onAppear { appDelegate.model = model }
         }
         .windowResizability(.contentMinSize)
-        .defaultSize(width: 600, height: 480)
-        .windowToolbarStyle(.unified)
         .commands {
+            CommandGroup(replacing: .appSettings) {
+                Button("Settings...") {
+                    model.isSettingsPresented = true
+                }
+                .keyboardShortcut(",", modifiers: [.command])
+            }
+
             CommandGroup(after: .newItem) {
                 Button("Choose Audio File...") {
                     model.presentImporter()
@@ -28,11 +33,6 @@ struct PianoTranscribeApp: App {
                 .keyboardShortcut(".", modifiers: [.command])
                 .disabled(!model.canCancel)
             }
-        }
-
-        Settings {
-            SettingsView(model: model)
-                .frame(width: 480, height: 380)
         }
     }
 }

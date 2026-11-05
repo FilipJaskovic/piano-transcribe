@@ -25,7 +25,7 @@ enum TranscriptionStatus: Equatable, Sendable {
         case .idle:
             "Ready"
         case .preparingBackend:
-            "Preparing"
+            "Preparing backend"
         case .copyingInput:
             "Preparing audio"
         case .transcribing:
