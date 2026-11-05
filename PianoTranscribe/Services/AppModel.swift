@@ -13,12 +13,12 @@ final class AppModel {
     private var startupAutomationHandled = false
 
     private(set) var status: TranscriptionStatus = .idle
-    private(set) var sourceURL: URL?
     private(set) var progress: Double?
     private(set) var logLines: [String] = []
     private(set) var isBenchmarkCheckpointAvailable = false
     var isImporterPresented = false
     var isDropTargeted = false
+    var isSettingsPresented = false
     var isLogExpanded = false
     var selectedDevice: TranskunDevice = .cpu {
         didSet { preferences?.set(selectedDevice.rawValue, forKey: "selectedDevice") }
@@ -148,7 +148,6 @@ final class AppModel {
         guard !isRunning else { return }
         logLines.removeAll()
         progress = nil
-        self.sourceURL = sourceURL
         let checkpoint = selectedCheckpoint
         do {
             guard sourceURL.isFileURL, SupportedAudioTypes.extensions.contains(sourceURL.pathExtension.lowercased()) else {
@@ -182,6 +181,9 @@ final class AppModel {
                 statusHandler: { [weak self] status in
                     Task { @MainActor in
                         guard let self, self.activeJobID == job.id, self.status != .cancelling else { return }
+                        // Backend stage events drive decoding and transcribing; the service's
+                        // pre-launch copies of those would make the stage track jump backwards.
+                        guard status == .preparingBackend || status == .savingOutput else { return }
                         self.status = status
                         self.progress = nil
                     }

@@ -6,160 +6,100 @@ struct ContentView: View {
     @Bindable var model: AppModel
 
     var body: some View {
-        VStack(spacing: 0) {
-            audioArea
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-                .frame(minHeight: 180)
-                .background(.background)
-                .contentShape(Rectangle())
+        VStack(spacing: 18) {
+            header
+
+            DropZoneView(
+                isTargeted: model.isDropTargeted,
+                isEnabled: !model.isRunning,
+                chooseAudio: model.presentImporter
+            )
                 .onDrop(
                     of: [UTType.fileURL.identifier],
                     isTargeted: $model.isDropTargeted,
                     perform: model.handleDrop(providers:)
                 )
-                .overlay {
-                    if model.isDropTargeted && !model.isRunning {
-                        Rectangle().stroke(.tint, lineWidth: 2)
-                            .allowsHitTesting(false)
-                    }
-                }
 
-            Divider()
+            controlBar
 
-            options
-                .padding(.horizontal, 24)
-                .padding(.vertical, 16)
+            StatusView(status: model.status, progress: model.progress)
 
-            Divider()
-
-            VStack(spacing: 12) {
-                HStack(alignment: .top, spacing: 16) {
-                    StatusView(status: model.status, progress: model.progress)
-
-                    if model.isRunning {
-                        Button("Cancel", action: model.cancel)
-                            .disabled(!model.canCancel)
-                    } else if case .completed(let url) = model.status {
-                        Button("Show in Finder", systemImage: "folder") {
-                            NSWorkspace.shared.activateFileViewerSelecting([url])
-                        }
-                    }
-                }
-
-                if !model.logLines.isEmpty {
-                    LogView(lines: model.logLines, isExpanded: $model.isLogExpanded)
-                }
-            }
-            .padding(16)
+            LogView(lines: model.logLines, isExpanded: $model.isLogExpanded)
         }
-        .frame(minWidth: 560, minHeight: model.isLogExpanded && !model.logLines.isEmpty ? 600 : 460)
-        .toolbar {
-            ToolbarItem(placement: .primaryAction) {
-                Button("Choose Audio...", systemImage: "folder.badge.plus") {
-                    model.presentImporter()
-                }
-                .disabled(model.isRunning)
-                .help("Choose an audio file")
-            }
-            ToolbarItem {
-                SettingsLink {
-                    Label("Settings", systemImage: "gearshape")
-                }
-                .help("Settings")
-            }
-        }
+        .padding(28)
+        .frame(minWidth: 660, minHeight: 560)
         .fileImporter(
             isPresented: $model.isImporterPresented,
             allowedContentTypes: SupportedAudioTypes.importerTypes,
             allowsMultipleSelection: false,
             onCompletion: model.handleImporterResult(_:)
         )
+        .sheet(isPresented: $model.isSettingsPresented) {
+            SettingsView(model: model)
+        }
         .task {
             model.refreshBenchmarkCheckpointAvailability()
             model.runStartupAutomationIfNeeded()
         }
     }
 
-    @ViewBuilder
-    private var audioArea: some View {
-        if let url = model.sourceURL, !model.isDropTargeted || model.isRunning {
-            VStack(spacing: 12) {
-                Image(nsImage: NSWorkspace.shared.icon(forFile: url.path))
-                    .resizable()
-                    .scaledToFit()
-                    .frame(width: 56, height: 56)
-                    .accessibilityHidden(true)
+    private var header: some View {
+        HStack(spacing: 14) {
+            Image(nsImage: NSApplication.shared.applicationIconImage)
+                .resizable()
+                .frame(width: 52, height: 52)
+                .accessibilityHidden(true)
 
-                Text(url.lastPathComponent)
-                    .font(.headline)
-                    .multilineTextAlignment(.center)
-                    .lineLimit(2)
-                    .truncationMode(.middle)
-                    .help(url.path)
-
-                Label(url.deletingLastPathComponent().lastPathComponent, systemImage: "folder")
+            VStack(alignment: .leading, spacing: 3) {
+                Text("Piano transcribe")
+                    .font(.largeTitle.weight(.semibold))
+                Text("Audio in, MIDI out")
                     .font(.callout)
                     .foregroundStyle(.secondary)
-                    .lineLimit(1)
-                    .truncationMode(.middle)
             }
-            .padding(24)
-            .contextMenu {
-                Button("Show Audio in Finder", systemImage: "folder") {
-                    NSWorkspace.shared.activateFileViewerSelecting([url])
-                }
+
+            Spacer()
+
+            Button {
+                model.isSettingsPresented = true
+            } label: {
+                Label("Settings", systemImage: "gearshape")
             }
-        } else {
-            DropZoneView(isTargeted: model.isDropTargeted, chooseAudio: model.presentImporter)
+            .help("Settings (⌘,)")
         }
     }
 
-    private var options: some View {
-        Grid(horizontalSpacing: 12, verticalSpacing: 12) {
-            GridRow {
-                Text("Model")
-                    .gridColumnAlignment(.trailing)
-                Picker("Model", selection: $model.selectedCheckpoint) {
-                    Text(TranskunCheckpoint.packagedDefault.label)
-                        .tag(TranskunCheckpoint.packagedDefault)
-                    Text(TranskunCheckpoint.benchmarkV2.label)
-                        .tag(TranskunCheckpoint.benchmarkV2)
-                        .disabled(!model.isBenchmarkCheckpointAvailable)
-                }
-                .labelsHidden()
-                .frame(width: 280, alignment: .leading)
+    private var controlBar: some View {
+        HStack(spacing: 12) {
+            Button {
+                model.presentImporter()
+            } label: {
+                Label("Choose Audio", systemImage: "folder")
             }
+            .buttonStyle(.borderedProminent)
+            .keyboardShortcut("o", modifiers: [.command])
+            .disabled(model.isRunning)
 
-            GridRow {
-                Text("Save MIDI to")
-                Picker("Save MIDI to", selection: $model.outputDestinationMode) {
-                    ForEach(OutputDestinationMode.allCases) { mode in
-                        Text(mode.label).tag(mode)
-                    }
+            Picker("Device", selection: $model.selectedDevice) {
+                ForEach(TranskunDevice.allCases) { device in
+                    Text(device.label).tag(device)
                 }
-                .labelsHidden()
-                .frame(width: 280, alignment: .leading)
             }
+            .labelsHidden()
+            .frame(width: 240)
+            .disabled(model.isRunning)
 
-            if model.outputDestinationMode == .customFolder {
-                GridRow {
-                    Text("Folder")
-                    HStack(spacing: 8) {
-                        Text(model.customOutputFolderURL?.lastPathComponent ?? "Not selected")
-                            .lineLimit(1)
-                            .truncationMode(.middle)
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                            .help(model.customOutputFolderPath)
-                        Button("Choose...", systemImage: "folder") {
-                            model.chooseCustomOutputFolder()
-                        }
-                    }
-                    .frame(width: 280)
+            Spacer()
+
+            if model.isRunning {
+                Button {
+                    model.cancel()
+                } label: {
+                    Label("Cancel", systemImage: "xmark.circle")
                 }
+                .disabled(!model.canCancel)
             }
         }
-        .frame(maxWidth: .infinity)
-        .disabled(model.isRunning)
     }
 }
 
