@@ -1,6 +1,6 @@
 # Packaging Piano transcribe V2
 
-V2 release artifacts target Apple Silicon and macOS 26 or later. The app bundles
+Release artifacts target Apple Silicon and macOS 26 or later. The app bundles
 Transkun, its packaged-default and existing benchmark checkpoints, CPython 3.12, and local-only FFmpeg and
 ffprobe. There is no separator, user-installed Python, Homebrew requirement, or
 first-run model download.
@@ -30,7 +30,7 @@ installed locally. Then run:
 Missing identity or credentials fail before backend downloads. The pipeline signs
 nested Mach-O files individually, signs the app, requires Apple's `Accepted`
 notarization result, staples and validates both the app and final DMG, and checks
-Gatekeeper. `VERSION` defaults to `2.0.0`; `BUILD_NUMBER` defaults to `2`.
+Gatekeeper. `VERSION` defaults to `0.2.0`; `BUILD_NUMBER` defaults to `2`.
 
 ## GitHub Actions
 
