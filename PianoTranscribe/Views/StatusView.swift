@@ -7,6 +7,7 @@ struct StatusView: View {
     var progress: Double? = nil
 
     private static let stages = ["Prepare", "Decode", "Transcribe", "Save"]
+    private static let progressStages: Set<Int> = [1, 2]
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -78,7 +79,9 @@ struct StatusView: View {
     private func fill(for index: Int, current: Int) -> Double {
         if index < current { return 1 }
         if index > current { return 0 }
-        return progress ?? 1
+        // Decode and Transcribe report processed audio, so they start empty rather than
+        // shrinking when the first progress event arrives. Prepare and Save never report it.
+        return progress ?? (Self.progressStages.contains(index) ? 0 : 1)
     }
 
     private var stageIndex: Int? {

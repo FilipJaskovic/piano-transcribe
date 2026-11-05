@@ -85,7 +85,7 @@ struct LogView: View {
             .frame(height: 180)
             .background(Color(nsColor: .textBackgroundColor).opacity(0.6))
             .onAppear { proxy.scrollTo(lines.count - 1, anchor: .bottom) }
-            .onChange(of: lines.count) { _, count in proxy.scrollTo(count - 1, anchor: .bottom) }
+            .onChange(of: lines) { _, lines in proxy.scrollTo(lines.count - 1, anchor: .bottom) }
         }
     }
 }
