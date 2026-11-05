@@ -8,7 +8,7 @@ elif [[ $# != 0 ]]; then
   echo "usage: $0 [--allow-unsigned]" >&2
   exit 2
 fi
-VERSION="${VERSION:-2.0.0}"
+VERSION="${VERSION:-0.2.0}"
 [[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || { echo 'VERSION must be x.y.z.' >&2; exit 2; }
 if [[ "$ALLOW_UNSIGNED" == 0 ]]; then
   : "${SIGN_IDENTITY:?Developer ID identity required}" "${APPLE_ID:?Apple ID required}" \
